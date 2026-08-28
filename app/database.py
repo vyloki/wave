@@ -6,6 +6,7 @@ Uses Motor (async MongoDB driver) with connection pooling.
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.config import settings
 import logging
+import certifi
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +20,14 @@ class Database:
     async def connect(self) -> None:
         """Establish connection to MongoDB Atlas."""
         try:
+            ca_file = certifi.where()
             self.client = AsyncIOMotorClient(
                 settings.mongodb_uri,
                 maxPoolSize=10,
                 minPoolSize=1,
                 serverSelectionTimeoutMS=5000,
                 connectTimeoutMS=10000,
+                tlsCAFile=ca_file,
             )
             self.db = self.client[settings.mongodb_db_name]
 

@@ -31,7 +31,13 @@ async def lifespan(app: FastAPI):
     logger.info(f"   Debug: {settings.debug}")
 
     # Connect to MongoDB
-    await database.connect()
+    try:
+        await database.connect()
+    except Exception as e:
+        logger.warning(
+            f"⚠️ MongoDB connection failed on startup: {e}\n"
+            f"   Please ensure 0.0.0.0/0 is added to MongoDB Atlas Network Access."
+        )
 
     logger.info(
         f"🚀 Wave is ready at "

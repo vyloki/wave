@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: wave-music-app
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 1440
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 8000

@@ -1,0 +1,313 @@
+/* ============================================ */
+/*  Wave — Animations & Special Effects         */
+/* ============================================ */
+
+/* --- Keyframes --- */
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes vinylSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes loaderPulse {
+    0%, 100% {
+        height: 8px;
+        opacity: 0.4;
+    }
+    50% {
+        height: 24px;
+        opacity: 1;
+    }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+@keyframes nowPlayingBars {
+    0%, 100% { height: 4px; }
+    25% { height: 14px; }
+    50% { height: 8px; }
+    75% { height: 18px; }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+}
+
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* --- Animation Utility Classes --- */
+
+.animate-fade-in {
+    animation: fadeIn 0.3s ease;
+}
+
+.animate-slide-up {
+    animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.animate-slide-down {
+    animation: slideDown 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.animate-scale-in {
+    animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* --- Skeleton Loading --- */
+
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--bg-secondary) 25%,
+        var(--bg-tertiary) 50%,
+        var(--bg-secondary) 75%
+    );
+    background-size: 400% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: var(--radius-sm);
+}
+
+.skeleton-text {
+    height: 14px;
+    width: 80%;
+    margin-bottom: 8px;
+}
+
+.skeleton-text-sm {
+    height: 10px;
+    width: 60%;
+}
+
+.skeleton-circle {
+    border-radius: var(--radius-full);
+}
+
+.skeleton-card {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: var(--radius-md);
+}
+
+/* --- Now Playing Indicator --- */
+
+.now-playing-indicator {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 16px;
+}
+
+.now-playing-indicator .bar {
+    width: 3px;
+    background: var(--accent-dark);
+    border-radius: var(--radius-full);
+    animation: nowPlayingBars 0.8s ease-in-out infinite;
+}
+
+.now-playing-indicator .bar:nth-child(1) { animation-delay: 0s; height: 8px; }
+.now-playing-indicator .bar:nth-child(2) { animation-delay: 0.15s; height: 14px; }
+.now-playing-indicator .bar:nth-child(3) { animation-delay: 0.3s; height: 10px; }
+.now-playing-indicator .bar:nth-child(4) { animation-delay: 0.45s; height: 16px; }
+
+/* --- Staggered List Animation --- */
+
+.stagger-item {
+    animation: slideUp 0.4s ease forwards;
+    opacity: 0;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0.05s; }
+.stagger-item:nth-child(2) { animation-delay: 0.1s; }
+.stagger-item:nth-child(3) { animation-delay: 0.15s; }
+.stagger-item:nth-child(4) { animation-delay: 0.2s; }
+.stagger-item:nth-child(5) { animation-delay: 0.25s; }
+.stagger-item:nth-child(6) { animation-delay: 0.3s; }
+.stagger-item:nth-child(7) { animation-delay: 0.35s; }
+.stagger-item:nth-child(8) { animation-delay: 0.4s; }
+.stagger-item:nth-child(9) { animation-delay: 0.45s; }
+.stagger-item:nth-child(10) { animation-delay: 0.5s; }
+
+/* --- Hover Effects --- */
+
+.hover-lift {
+    transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.hover-glow:hover {
+    box-shadow: 0 0 20px var(--accent-glow);
+}
+
+/* --- Toast Animation --- */
+
+.toast-exit {
+    animation: slideOutRight 0.3s ease forwards;
+}
+
+@keyframes slideOutRight {
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
+/* --- Page Transition --- */
+
+.page-enter {
+    animation: fadeIn 0.3s ease, slideUp 0.3s ease;
+}
+
+.page-exit {
+    animation: fadeOut 0.2s ease;
+}
+
+/* --- Ripple Effect (on buttons) --- */
+
+.ripple {
+    position: relative;
+    overflow: hidden;
+}
+
+.ripple::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(44, 36, 24, 0.08);
+    transform: translate(-50%, -50%);
+    transition: width 0.4s ease, height 0.4s ease, opacity 0.4s ease;
+    opacity: 0;
+}
+
+.ripple:active::after {
+    width: 200%;
+    height: 200%;
+    opacity: 1;
+    transition: 0s;
+}
+
+/* --- Floating Action --- */
+
+.float-animation {
+    animation: float 3s ease-in-out infinite;
+}
+
+/* --- Gradient Text --- */
+
+.gradient-text {
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* --- Smooth scroll indicator --- */
+
+.scroll-fade-top::before,
+.scroll-fade-bottom::after {
+    content: '';
+    position: sticky;
+    display: block;
+    height: 40px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.scroll-fade-top::before {
+    top: 0;
+    background: linear-gradient(to bottom, var(--bg-primary), transparent);
+}
+
+.scroll-fade-bottom::after {
+    bottom: 0;
+    background: linear-gradient(to top, var(--bg-primary), transparent);
+}

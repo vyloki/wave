@@ -1,0 +1,30 @@
+# Wave - Music Streaming App Dependencies
+
+# Web Framework
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+
+# MongoDB Async Driver
+motor==3.7.1
+pymongo==4.12.1
+
+# Authentication
+python-jose[cryptography]==3.4.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.3.0
+
+# Data Validation
+pydantic[email-validation]==2.11.4
+pydantic-settings==2.9.1
+
+# YouTube Audio Extraction
+yt-dlp==2025.6.9
+
+# HTTP Client (for external APIs)
+httpx==0.28.1
+
+# Environment Variables
+python-dotenv==1.1.0
+
+# CORS & Static Files
+aiofiles==24.1.0

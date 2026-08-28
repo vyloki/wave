@@ -14,8 +14,9 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.3.0
 
 # Data Validation
-pydantic[email-validation]==2.11.4
+pydantic==2.11.4
 pydantic-settings==2.9.1
+email-validator>=2.0.0
 
 # YouTube Audio Extraction
 yt-dlp==2025.6.9

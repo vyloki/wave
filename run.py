@@ -7,28 +7,33 @@ Usage:
     python run.py
 """
 
+import os
 import uvicorn
 from app.config import settings
 
 
 def main():
     """Start the Wave server."""
+    port = int(os.environ.get("PORT", str(settings.port)))
+    host = os.environ.get("HOST", settings.host)
+    debug = os.environ.get("DEBUG", "false").lower() in ("1", "true", "yes")
+
     print()
     print("  🎵  W A V E  ")
     print("  ─────────────────────────")
     print("  Your Personal Music App")
     print(f"  Version {settings.app_version}")
     print()
-    print(f"  🌐  http://localhost:{settings.port}")
-    print(f"  📚  http://localhost:{settings.port}/docs")
+    print(f"  🌐  http://{host}:{port}")
+    print(f"  📚  http://{host}:{port}/docs")
     print()
 
     uvicorn.run(
         "app.main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.debug,
-        log_level="debug" if settings.debug else "info",
+        host=host,
+        port=port,
+        reload=debug,
+        log_level="debug" if debug else "info",
     )
 
 

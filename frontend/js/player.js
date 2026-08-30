@@ -1,8 +1,166 @@
 /**
- * Wave — Music Player Engine
- * Full audio engine with continuous recommendation playback, queue, lyrics sync,
- * Media Session API, volume control, progress seeking, and persistent dual-layer history.
+ * YouTube Audio Bridge
+ * Client-side embedded playback engine to bypass cloud IP data center rate-limits.
  */
+const YTBridge = {
+    player: null,
+    isReady: false,
+    active: false,
+    pollTimer: null,
+    pendingId: null,
+
+    init() {
+        if (window.YT && window.YT.Player) {
+            this.createPlayer();
+            return;
+        }
+        if (!document.getElementById('yt-iframe-api-script')) {
+            const tag = document.createElement('script');
+            tag.id = 'yt-iframe-api-script';
+            tag.src = 'https://www.youtube.com/iframe_api';
+            document.head.appendChild(tag);
+        }
+        window.onYouTubeIframeAPIReady = () => {
+            this.createPlayer();
+        };
+    },
+
+    createPlayer() {
+        if (this.player) return;
+        let host = document.getElementById('yt-bridge-host');
+        if (!host) {
+            host = document.createElement('div');
+            host.id = 'yt-bridge-host';
+            host.style.cssText = 'position:fixed;bottom:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-999;';
+            document.body.appendChild(host);
+        }
+        const inner = document.createElement('div');
+        inner.id = 'yt-bridge-iframe-target';
+        host.appendChild(inner);
+
+        try {
+            this.player = new YT.Player('yt-bridge-iframe-target', {
+                height: '1',
+                width: '1',
+                playerVars: {
+                    autoplay: 1,
+                    controls: 0,
+                    disablekb: 1,
+                    fs: 0,
+                    playsinline: 1,
+                    rel: 0,
+                    modestbranding: 1,
+                },
+                events: {
+                    onReady: () => {
+                        this.isReady = true;
+                        if (this.pendingId) {
+                            this.play(this.pendingId);
+                            this.pendingId = null;
+                        }
+                    },
+                    onStateChange: (e) => {
+                        this.handleState(e.data);
+                    },
+                    onError: (e) => {
+                        console.warn('YTBridge playback code:', e.data);
+                    }
+                }
+            });
+        } catch (e) {
+            console.warn('YTBridge creation error:', e);
+        }
+    },
+
+    play(videoId) {
+        this.active = true;
+        if (!this.isReady || !this.player || !this.player.loadVideoById) {
+            this.pendingId = videoId;
+            return;
+        }
+        try {
+            this.player.loadVideoById(videoId);
+            this.player.playVideo();
+            if (this.player.setVolume) {
+                this.player.setVolume(Player.volume);
+            }
+            this.startPolling();
+        } catch (e) {
+            console.warn('YTBridge play error:', e);
+        }
+    },
+
+    pause() {
+        if (this.player && this.player.pauseVideo) {
+            try { this.player.pauseVideo(); } catch (e) {}
+        }
+        this.stopPolling();
+    },
+
+    resume() {
+        if (this.player && this.player.playVideo) {
+            try {
+                this.player.playVideo();
+                this.startPolling();
+            } catch (e) {}
+        }
+    },
+
+    seekTo(seconds) {
+        if (this.player && this.player.seekTo) {
+            try { this.player.seekTo(seconds, true); } catch (e) {}
+        }
+    },
+
+    setVolume(vol) {
+        if (this.player && this.player.setVolume) {
+            try { this.player.setVolume(vol); } catch (e) {}
+        }
+    },
+
+    stop() {
+        this.active = false;
+        this.stopPolling();
+        if (this.player && this.player.stopVideo) {
+            try { this.player.stopVideo(); } catch (e) {}
+        }
+    },
+
+    startPolling() {
+        this.stopPolling();
+        this.pollTimer = setInterval(() => {
+            if (!this.active || !this.player) return;
+            try {
+                const cur = this.player.getCurrentTime ? this.player.getCurrentTime() : 0;
+                const dur = this.player.getDuration ? this.player.getDuration() : (Player.currentTrack?.duration || 0);
+                if (dur > 0) {
+                    Player.onYTTimeUpdate(cur, dur);
+                }
+            } catch (e) {}
+        }, 250);
+    },
+
+    stopPolling() {
+        if (this.pollTimer) {
+            clearInterval(this.pollTimer);
+            this.pollTimer = null;
+        }
+    },
+
+    handleState(state) {
+        // 1: PLAYING, 2: PAUSED, 0: ENDED, 3: BUFFERING
+        if (state === 1) {
+            Player.isPlaying = true;
+            Player.onPlayState(true);
+        } else if (state === 2) {
+            Player.isPlaying = false;
+            Player.onPlayState(false);
+        } else if (state === 0) {
+            this.stopPolling();
+            Player.onEnded();
+        }
+    }
+};
 
 const Player = {
     audio: null,
@@ -16,12 +174,15 @@ const Player = {
     elements: {},
     playedSessionIds: new Set(),
     isAutoFetchingRadio: false,
+    activeEngine: 'audio', // 'audio' or 'yt'
 
     init() {
         this.audio = new Audio();
         this.audio.crossOrigin = 'anonymous';
         this.audio.preload = 'auto';
         this.audio.volume = this.volume / 100;
+
+        YTBridge.init();
 
         this.cacheElements();
         this.bindEvents();
@@ -180,6 +341,12 @@ const Player = {
         this.currentTrack = track;
         this.updateTrackUI(track);
 
+        // Reset previous playing engine
+        if (this.activeEngine === 'yt') {
+            YTBridge.stop();
+        }
+        this.activeEngine = 'audio';
+
         // Save track to local storage recently played
         if (!track.isLocal) {
             this.saveToLocalHistory(track);
@@ -198,58 +365,77 @@ const Player = {
             await this.audio.play();
             this.isPlaying = true;
             this.onPlayState(true);
-
-            // Record transition in graph (for online songs)
-            if (!track.isLocal && prevTrackId && prevTrackId !== track.video_id) {
-                API.post(`/api/recommendations/transition?from_id=${prevTrackId}&to_id=${track.video_id}`).catch(() => {});
-            }
-
-            // Record history in MongoDB (for online songs)
-            if (!track.isLocal) {
-                // Snapshot the fully-resolved display metadata at play-time
-                const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : null;
-                API.post('/api/history', {
-                    video_id: track.video_id,
-                    title: (meta?.title) || track.track_name || track.title || 'Unknown',
-                    artist: (meta?.artist) || track.artist || 'Unknown',
-                    thumbnail: track.thumbnail || track.album_art || '',
-                    movie: (meta?.movie) || track.movie || '',
-                    language: (meta?.language) || track.language || '',
-                    subtitle: (meta?.subtitle) || track.subtitle || '',
-                }).catch(() => {});
-            }
-
-            // Update Media Session
-            this.updateMediaSession(track);
-
-            // Refresh recently played on Home
-            if (typeof loadHomeRecentlyPlayed === 'function') {
-                loadHomeRecentlyPlayed();
-            }
-
-            // Auto-refresh lyrics if overlay is open
-            if (!document.getElementById('lyrics-overlay')?.classList.contains('hidden')) {
-                if (typeof Lyrics !== 'undefined') {
-                    Lyrics.loadLyrics(track);
-                }
-            }
-
-            // Record session tracking
-            this.playedSessionIds.add(track.video_id);
-
-            // Fetch language versions in background (non-blocking)
-            if (!track.isLocal) {
-                this.fetchLanguageVersions(track);
-            }
-
-            // Proactively pre-fetch similar radio tracks to ensure infinite continuous playback
-            if (!track.isLocal) {
-                this.checkAndPrefetchRadio(track);
-            }
-
+            this.postPlayTracking(track, prevTrackId);
         } catch (error) {
-            console.error('Audio play error:', error);
-            showToast('Unable to stream audio for this track', 'error');
+            console.warn('Native audio stream error on cloud, seamlessly switching to client YouTube Audio Engine:', error);
+            if (!track.isLocal && track.video_id && !track.video_id.startsWith('ext_')) {
+                this.playViaYTBridge(track, prevTrackId);
+            } else {
+                showToast('Unable to stream audio for this track', 'error');
+            }
+        }
+    },
+
+    playViaYTBridge(track, prevTrackId) {
+        this.activeEngine = 'yt';
+        try {
+            this.audio.pause();
+            this.audio.removeAttribute('src');
+            this.audio.load();
+        } catch (e) {}
+
+        this.isPlaying = true;
+        this.onPlayState(true);
+        YTBridge.play(track.video_id);
+        this.postPlayTracking(track, prevTrackId);
+    },
+
+    postPlayTracking(track, prevTrackId) {
+        // Record transition in graph (for online songs)
+        if (!track.isLocal && prevTrackId && prevTrackId !== track.video_id) {
+            API.post(`/api/recommendations/transition?from_id=${prevTrackId}&to_id=${track.video_id}`).catch(() => {});
+        }
+
+        // Record history in MongoDB (for online songs)
+        if (!track.isLocal) {
+            const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : null;
+            API.post('/api/history', {
+                video_id: track.video_id,
+                title: (meta?.title) || track.track_name || track.title || 'Unknown',
+                artist: (meta?.artist) || track.artist || 'Unknown',
+                thumbnail: track.thumbnail || track.album_art || '',
+                movie: (meta?.movie) || track.movie || '',
+                language: (meta?.language) || track.language || '',
+                subtitle: (meta?.subtitle) || track.subtitle || '',
+            }).catch(() => {});
+        }
+
+        // Update Media Session
+        this.updateMediaSession(track);
+
+        // Refresh recently played on Home
+        if (typeof loadHomeRecentlyPlayed === 'function') {
+            loadHomeRecentlyPlayed();
+        }
+
+        // Auto-refresh lyrics if overlay is open
+        if (!document.getElementById('lyrics-overlay')?.classList.contains('hidden')) {
+            if (typeof Lyrics !== 'undefined') {
+                Lyrics.loadLyrics(track);
+            }
+        }
+
+        // Record session tracking
+        this.playedSessionIds.add(track.video_id);
+
+        // Fetch language versions in background (non-blocking)
+        if (!track.isLocal) {
+            this.fetchLanguageVersions(track);
+        }
+
+        // Proactively pre-fetch similar radio tracks to ensure infinite continuous playback
+        if (!track.isLocal) {
+            this.checkAndPrefetchRadio(track);
         }
     },
 
@@ -390,6 +576,19 @@ const Player = {
 
 
     togglePlay() {
+        if (this.activeEngine === 'yt') {
+            if (this.isPlaying) {
+                YTBridge.pause();
+                this.isPlaying = false;
+                this.onPlayState(false);
+            } else {
+                YTBridge.resume();
+                this.isPlaying = true;
+                this.onPlayState(true);
+            }
+            return;
+        }
+
         if (!this.audio.src) {
             if (this.queue.length > 0) {
                 this.play(this.queue[0]);
@@ -400,7 +599,9 @@ const Player = {
         if (this.isPlaying) {
             this.audio.pause();
         } else {
-            this.audio.play().catch(console.error);
+            this.audio.play().catch(() => {
+                if (this.currentTrack) this.playViaYTBridge(this.currentTrack);
+            });
         }
     },
 
@@ -449,7 +650,13 @@ const Player = {
     },
 
     previous() {
-        if (this.audio.currentTime > 3) {
+        if (this.activeEngine === 'yt') {
+            const cur = YTBridge.player?.getCurrentTime ? YTBridge.player.getCurrentTime() : 0;
+            if (cur > 3) {
+                YTBridge.seekTo(0);
+                return;
+            }
+        } else if (this.audio.currentTime > 3) {
             this.audio.currentTime = 0;
             return;
         }
@@ -461,12 +668,25 @@ const Player = {
     },
 
     seekTo(percent) {
+        if (this.activeEngine === 'yt') {
+            const dur = YTBridge.player?.getDuration ? YTBridge.player.getDuration() : (this.currentTrack?.duration || 0);
+            if (dur > 0) {
+                YTBridge.seekTo(percent * dur);
+            }
+            return;
+        }
         if (this.audio.duration) {
             this.audio.currentTime = percent * this.audio.duration;
         }
     },
 
     seekRelative(seconds) {
+        if (this.activeEngine === 'yt') {
+            const cur = YTBridge.player?.getCurrentTime ? YTBridge.player.getCurrentTime() : 0;
+            const dur = YTBridge.player?.getDuration ? YTBridge.player.getDuration() : (this.currentTrack?.duration || 0);
+            YTBridge.seekTo(Math.max(0, Math.min(dur, cur + seconds)));
+            return;
+        }
         if (this.audio.duration) {
             this.audio.currentTime = Math.max(
                 0,
@@ -713,6 +933,7 @@ const Player = {
     setVolume(value) {
         this.volume = Math.max(0, Math.min(100, value));
         this.audio.volume = this.volume / 100;
+        YTBridge.setVolume(this.volume);
         localStorage.setItem('wave_volume', this.volume);
         this.updateVolumeIcon();
     },
@@ -725,7 +946,7 @@ const Player = {
     },
 
     toggleMute() {
-        if (this.audio.volume > 0) {
+        if (this.audio.volume > 0 || (YTBridge.player?.getVolume && YTBridge.player.getVolume() > 0)) {
             this._prevVol = this.volume;
             this.setVolume(0);
         } else {
@@ -795,6 +1016,7 @@ const Player = {
     // ============================================
 
     onTimeUpdate() {
+        if (this.activeEngine === 'yt') return;
         if (!this.audio.duration) return;
 
         const percent = (this.audio.currentTime / this.audio.duration) * 100;
@@ -811,6 +1033,27 @@ const Player = {
         }
     },
 
+    onYTTimeUpdate(currentTime, duration) {
+        if (!duration || duration <= 0) return;
+
+        const percent = (currentTime / duration) * 100;
+        if (this.elements.progressFill) {
+            this.elements.progressFill.style.width = `${percent}%`;
+        }
+
+        if (this.elements.timeCurrent) {
+            this.elements.timeCurrent.textContent = formatDuration(currentTime);
+        }
+
+        if (this.elements.timeDuration) {
+            this.elements.timeDuration.textContent = formatDuration(duration);
+        }
+
+        if (typeof Lyrics !== 'undefined') {
+            Lyrics.syncToTime(currentTime);
+        }
+    },
+
     onLoaded() {
         if (this.elements.timeDuration) {
             this.elements.timeDuration.textContent = formatDuration(this.audio.duration);
@@ -819,8 +1062,13 @@ const Player = {
 
     onEnded() {
         if (this.repeatMode === 'one') {
-            this.audio.currentTime = 0;
-            this.audio.play();
+            if (this.activeEngine === 'yt') {
+                YTBridge.seekTo(0);
+                YTBridge.resume();
+            } else {
+                this.audio.currentTime = 0;
+                this.audio.play();
+            }
         } else {
             this.next();
         }
@@ -848,7 +1096,11 @@ const Player = {
     },
 
     onError(e) {
-        console.error('Audio stream playback error:', e);
+        console.warn('Native audio stream error on cloud host:', e);
+        if (this.currentTrack && !this.currentTrack.isLocal && this.currentTrack.video_id && !this.currentTrack.video_id.startsWith('ext_') && this.activeEngine !== 'yt') {
+            console.info('Switching to YouTube Audio Engine for seamless playback...');
+            this.playViaYTBridge(this.currentTrack);
+        }
     },
 
     // ============================================
@@ -915,7 +1167,11 @@ const Player = {
             navigator.mediaSession.setActionHandler('nexttrack', () => this.next());
             navigator.mediaSession.setActionHandler('seekto', (details) => {
                 if (details.seekTime !== undefined) {
-                    this.audio.currentTime = details.seekTime;
+                    if (this.activeEngine === 'yt') {
+                        YTBridge.seekTo(details.seekTime);
+                    } else {
+                        this.audio.currentTime = details.seekTime;
+                    }
                 }
             });
         }

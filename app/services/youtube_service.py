@@ -22,15 +22,16 @@ SEARCH_OPTS = {
     "no_color": True,
 }
 
-# yt-dlp options for stream URL extraction
+# yt-dlp options for stream URL extraction (using Android client to bypass cloud bot challenges)
 STREAM_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "skip_download": True,
-    "format": "bestaudio/best",
+    "format": "ba/b/18/best",
     "extractor_args": {
         "youtube": {
-            "player_client": ["android", "ios", "web"]
+            "player_client": ["android"],
+            "player_skip": ["webpage", "configs"],
         }
     },
     "ignoreerrors": True,

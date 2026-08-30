@@ -67,6 +67,20 @@ async def stream_audio(
                     client.build_request("GET", stream_url, headers=headers),
                     stream=True,
                 )
+            else:
+                await client.aclose()
+                raise HTTPException(
+                    status_code=502,
+                    detail="Audio stream temporarily unavailable from upstream source"
+                )
+
+        if response.status_code >= 400:
+            await response.aclose()
+            await client.aclose()
+            raise HTTPException(
+                status_code=response.status_code,
+                detail="Upstream streaming error"
+            )
 
         # Determine content type
         content_type = response.headers.get(

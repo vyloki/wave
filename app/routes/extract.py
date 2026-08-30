@@ -123,6 +123,11 @@ async def stream_extracted_audio(
             stream=True,
         )
 
+        if response.status_code >= 400:
+            await response.aclose()
+            await client.aclose()
+            raise HTTPException(status_code=response.status_code, detail="Extracted stream source error")
+
         content_type = response.headers.get("content-type", "audio/mp4")
         response_headers = {
             "Accept-Ranges": "bytes",
@@ -148,6 +153,8 @@ async def stream_extracted_audio(
             media_type=content_type,
             headers=response_headers,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Stream error for {extraction_id}: {e}")
         raise HTTPException(status_code=500, detail="Audio streaming failed")

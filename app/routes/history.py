@@ -30,6 +30,9 @@ async def record_play(
                 "title": data.title,
                 "artist": data.artist,
                 "thumbnail": data.thumbnail,
+                "movie": data.movie or "",
+                "language": data.language or "",
+                "subtitle": data.subtitle or "",
                 "played_at": datetime.now(timezone.utc),
             }
             await db.listening_history.insert_one(doc)
@@ -65,6 +68,9 @@ async def get_history(
                     "title": doc.get("title", ""),
                     "artist": doc.get("artist", ""),
                     "thumbnail": doc.get("thumbnail", ""),
+                    "movie": doc.get("movie", ""),
+                    "language": doc.get("language", ""),
+                    "subtitle": doc.get("subtitle", ""),
                     "played_at": doc.get("played_at"),
                 })
 
@@ -108,6 +114,9 @@ async def get_top(
                 "title": doc.get("title", ""),
                 "artist": doc.get("artist", ""),
                 "thumbnail": doc.get("thumbnail", ""),
+                "movie": doc.get("movie", ""),
+                "language": doc.get("language", ""),
+                "subtitle": doc.get("subtitle", ""),
                 "play_count": doc.get("play_count", 0),
                 "last_played": doc.get("last_played"),
             })

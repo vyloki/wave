@@ -16,6 +16,10 @@ const Auth = {
                 this.showApp();
                 this.updateUI();
                 this.syncLocalHistoryToCloud();
+                // Re-fetch recently played from cloud now that auth is restored
+                if (typeof loadHomeRecentlyPlayed === 'function') {
+                    loadHomeRecentlyPlayed();
+                }
             } catch {
                 this.showAuthModal();
             }

@@ -128,54 +128,89 @@ const Library = {
     },
 
     async renderLikedTab(container) {
+        let tracks = [];
         try {
-            const user = await API.get('/api/auth/me');
-            if (user && user.liked_tracks && user.liked_tracks.length > 0) {
-                // Fetch track details for each liked track ID
-                const trackPromises = user.liked_tracks.map(vid => API.get(`/api/search/track/${vid}`).catch(() => null));
-                const tracks = (await Promise.all(trackPromises)).filter(t => t !== null);
-
-                this.likedTracks = tracks;
-
-                if (tracks.length === 0) {
-                    container.innerHTML = `<div class="empty-state"><i data-lucide="heart"></i><p>No liked songs yet. Click the heart icon on any song!</p></div>`;
-                } else {
-                    container.innerHTML = `
-                        <div class="section-header-row">
-                            <button class="btn btn-primary" onclick="Library.playAllLiked()"><i data-lucide="play"></i> Play All (${tracks.length})</button>
-                        </div>
-                        <div class="track-list">
-                            ${tracks.map((track, i) => `
-                                <div class="track-row" onclick="Library.playLikedIndex(${i})">
-                                    <div class="track-row-art">
-                                        <img src="${track.thumbnail || track.album_art || ''}" alt="" onerror="this.style.display='none'">
-                                    </div>
-                                    <div class="track-row-info">
-                                        <div class="track-row-title">${escapeHtml(track.track_name || track.title)}</div>
-                                        <div class="track-row-artist">${escapeHtml(track.artist)}</div>
-                                    </div>
-                                    <div class="track-row-duration">${formatDuration(track.duration)}</div>
-                                    <div class="track-row-actions">
-                                        <button class="btn-icon" onclick="event.stopPropagation(); downloadSong('${track.video_id}', '${escapeHtml(track.track_name || track.title)}', '${escapeHtml(track.artist)}')" title="Download">
-                                            <i data-lucide="download"></i>
-                                        </button>
-                                        <button class="btn-icon btn-like liked" onclick="event.stopPropagation(); Library.unlikeTrack('${track.video_id}')" title="Unlike">
-                                            <i data-lucide="heart" style="fill: var(--color-error); color: var(--color-error);"></i>
-                                        </button>
-                                        <button class="btn-icon" onclick="event.stopPropagation(); Library.openAddToPlaylistModal('${track.video_id}', ${JSON.stringify(track).replace(/"/g, '&quot;')})" title="Add to playlist">
-                                            <i data-lucide="plus"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    `;
-                }
-            } else {
-                container.innerHTML = `<div class="empty-state"><i data-lucide="heart"></i><p>No liked songs yet. Click the heart icon on any song!</p></div>`;
+            // 1. Try fetching from backend API
+            const res = await API.get('/api/auth/liked');
+            if (res && Array.isArray(res.tracks)) {
+                tracks = res.tracks;
+                try {
+                    localStorage.setItem('wave_liked_tracks', JSON.stringify(tracks));
+                } catch (e) {}
             }
-        } catch {
-            container.innerHTML = `<div class="empty-state"><i data-lucide="heart"></i><p>Sign in to see your liked songs</p></div>`;
+        } catch (err) {
+            // 2. Fallback to localStorage for guest or offline mode
+            try {
+                tracks = JSON.parse(localStorage.getItem('wave_liked_tracks') || '[]');
+            } catch (e) {}
+        }
+
+        if (!tracks || tracks.length === 0) {
+            try {
+                tracks = JSON.parse(localStorage.getItem('wave_liked_tracks') || '[]');
+            } catch (e) {}
+        }
+
+        this.likedTracks = tracks;
+
+        if (!tracks || tracks.length === 0) {
+            container.innerHTML = `<div class="empty-state"><i data-lucide="heart"></i><p>No liked songs yet. Click the heart icon on any song!</p></div>`;
+        } else {
+            container.innerHTML = `
+                <div class="section-header-row">
+                    <button class="btn btn-primary" onclick="Library.playAllLiked()"><i data-lucide="play"></i> Play All (${tracks.length})</button>
+                </div>
+                <div class="track-list">
+                    ${tracks.map((track, i) => {
+                        const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : {
+                            title: track.track_name || track.title || 'Unknown Song',
+                            movie: track.movie || '',
+                            language: track.language || '',
+                            artist: track.artist || 'Unknown Artist',
+                            subtitle: track.artist || 'Unknown Artist'
+                        };
+                        const name = escapeHtml(meta.title);
+                        const movie = escapeHtml(meta.movie);
+                        const language = escapeHtml(meta.language);
+                        const artist = escapeHtml(meta.artist);
+
+                        const subtitleHtml = meta.movie ? `
+                            <span class="track-movie">${movie}</span>
+                            ${language ? `<span class="track-lang-dot">•</span><span class="track-lang-text">${language}</span>` : ''}
+                        ` : (meta.language ? `
+                            <span class="track-movie">${artist}</span>
+                            <span class="track-lang-dot">•</span><span class="track-lang-text">${language}</span>
+                        ` : `
+                            <span class="track-movie">${artist}</span>
+                        `);
+
+                        const safeTrackJson = JSON.stringify(track).replace(/"/g, '&quot;');
+
+                        return `
+                        <div class="track-row" onclick="Library.playLikedIndex(${i})">
+                            <div class="track-row-art">
+                                <img src="${track.thumbnail || track.album_art || ''}" alt="" onerror="this.style.display='none'">
+                            </div>
+                            <div class="track-row-info">
+                                <div class="track-row-title">${name}</div>
+                                <div class="track-row-artist">${subtitleHtml}</div>
+                            </div>
+                            <div class="track-row-duration">${formatDuration(track.duration)}</div>
+                            <div class="track-row-actions">
+                                <button class="btn-icon" onclick="event.stopPropagation(); downloadSong('${track.video_id}', '${name}', '${movie || artist}')" title="Download">
+                                    <i data-lucide="download"></i>
+                                </button>
+                                <button class="btn-icon btn-like liked" onclick="event.stopPropagation(); Library.unlikeTrack('${track.video_id}')" title="Unlike">
+                                    <i data-lucide="heart" style="fill: var(--color-error); color: var(--color-error);"></i>
+                                </button>
+                                <button class="btn-icon" onclick="event.stopPropagation(); Library.openAddToPlaylistModal('${track.video_id}', ${safeTrackJson})" title="Add to playlist">
+                                    <i data-lucide="plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;}).join('')}
+                </div>
+            `;
         }
         lucide.createIcons({ nodes: [container] });
     },
@@ -215,22 +250,25 @@ const Library = {
                         <button class="btn btn-ghost" onclick="Library.clearHistory()"><i data-lucide="trash-2"></i> Clear History</button>
                     </div>
                     <div class="track-list">
-                        ${data.history.map((item, i) => `
-                            <div class="track-row" onclick="playTrack('${item.video_id}', { video_id: '${item.video_id}', title: '${escapeHtml(item.title)}', artist: '${escapeHtml(item.artist)}', thumbnail: '${item.thumbnail}' })">
+                        ${data.history.map((item, i) => {
+                            const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(item) : { title: item.title, movie: '', language: '', artist: item.artist, subtitle: item.artist };
+                            const sub = meta.movie ? (meta.language ? `${meta.movie} • ${meta.language}` : meta.movie) : (meta.language ? `${meta.artist} • ${meta.language}` : meta.artist);
+                            return `
+                            <div class="track-row" onclick="playTrack('${item.video_id}', { video_id: '${item.video_id}', title: '${escapeHtml(meta.title)}', artist: '${escapeHtml(sub)}', thumbnail: '${item.thumbnail}' })">
                                 <div class="track-row-art">
                                     <img src="${item.thumbnail || ''}" alt="" onerror="this.style.display='none'">
                                 </div>
                                 <div class="track-row-info">
-                                    <div class="track-row-title">${escapeHtml(item.title)}</div>
-                                    <div class="track-row-artist">${escapeHtml(item.artist)}</div>
+                                    <div class="track-row-title">${escapeHtml(meta.title)}</div>
+                                    <div class="track-row-artist">${escapeHtml(sub)}</div>
                                 </div>
                                 <div class="track-row-duration">
-                                    <button class="btn-icon" onclick="event.stopPropagation(); playTrack('${item.video_id}', { video_id: '${item.video_id}', title: '${escapeHtml(item.title)}', artist: '${escapeHtml(item.artist)}', thumbnail: '${item.thumbnail}' })" title="Play">
+                                    <button class="btn-icon" onclick="event.stopPropagation(); playTrack('${item.video_id}', { video_id: '${item.video_id}', title: '${escapeHtml(meta.title)}', artist: '${escapeHtml(sub)}', thumbnail: '${item.thumbnail}' })" title="Play">
                                         <i data-lucide="play"></i>
                                     </button>
                                 </div>
                             </div>
-                        `).join('')}
+                        `;}).join('')}
                     </div>
                 `;
             } else {
@@ -304,14 +342,17 @@ const Library = {
                     this.currentPlaylistTracks = data.tracks;
                     listContainer.innerHTML = `
                         <div class="track-list">
-                            ${data.tracks.map((track, i) => `
+                            ${data.tracks.map((track, i) => {
+                                const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : { title: track.title, movie: '', language: '', artist: track.artist, subtitle: track.artist };
+                                const sub = meta.movie ? (meta.language ? `${meta.movie} • ${meta.language}` : meta.movie) : (meta.language ? `${meta.artist} • ${meta.language}` : meta.artist);
+                                return `
                                 <div class="track-row" onclick="Library.playPlaylistIndex(${i})">
                                     <div class="track-row-art">
                                         <img src="${track.thumbnail || ''}" alt="" onerror="this.style.display='none'">
                                     </div>
                                     <div class="track-row-info">
-                                        <div class="track-row-title">${escapeHtml(track.title)}</div>
-                                        <div class="track-row-artist">${escapeHtml(track.artist)}</div>
+                                        <div class="track-row-title">${escapeHtml(meta.title)}</div>
+                                        <div class="track-row-artist">${escapeHtml(sub)}</div>
                                     </div>
                                     <div class="track-row-duration">${formatDuration(track.duration)}</div>
                                     <div class="track-row-actions">
@@ -320,7 +361,7 @@ const Library = {
                                         </button>
                                     </div>
                                 </div>
-                            `).join('')}
+                            `;}).join('')}
                         </div>
                     `;
                 } else {
@@ -449,14 +490,108 @@ const Library = {
         }
     },
 
-    async unlikeTrack(videoId) {
+    async toggleLike(videoId, track = null) {
+        if (!videoId) return false;
+
+        let isNowLiked = false;
+        const currentTrack = track || (typeof Player !== 'undefined' && Player.currentTrack?.video_id === videoId ? Player.currentTrack : { video_id: videoId });
+
         try {
-            await API.post(`/api/auth/like/${videoId}`);
-            showToast('Removed from Liked Songs', 'info');
-            this.renderTabContent();
-        } catch {
-            showToast('Failed to unlike', 'error');
+            // Send API request to persist in DB
+            const res = await API.post(`/api/auth/like/${videoId}`, { track: currentTrack });
+            if (res && typeof res.is_liked === 'boolean') {
+                isNowLiked = res.is_liked;
+            } else if (res && res.message) {
+                isNowLiked = res.message.toLowerCase().includes('liked') && !res.message.toLowerCase().includes('unliked');
+            }
+        } catch (err) {
+            // Guest / Offline fallback toggle
+            let localLiked = [];
+            try {
+                localLiked = JSON.parse(localStorage.getItem('wave_liked_tracks') || '[]');
+            } catch (e) {}
+
+            const existingIdx = localLiked.findIndex(t => t.video_id === videoId);
+            if (existingIdx >= 0) {
+                localLiked.splice(existingIdx, 1);
+                isNowLiked = false;
+            } else {
+                localLiked.unshift(currentTrack);
+                isNowLiked = true;
+            }
+            localStorage.setItem('wave_liked_tracks', JSON.stringify(localLiked));
         }
+
+        // Sync local storage cache
+        try {
+            let localLiked = JSON.parse(localStorage.getItem('wave_liked_tracks') || '[]');
+            const existingIdx = localLiked.findIndex(t => t.video_id === videoId);
+            if (isNowLiked) {
+                if (existingIdx < 0) localLiked.unshift(currentTrack);
+            } else {
+                if (existingIdx >= 0) localLiked.splice(existingIdx, 1);
+            }
+            localStorage.setItem('wave_liked_tracks', JSON.stringify(localLiked));
+        } catch (e) {}
+
+        // Update UI everywhere
+        this.updateLikeUI(videoId, isNowLiked);
+
+        showToast(isNowLiked ? 'Added to Liked Songs' : 'Removed from Liked Songs', 'success');
+
+        // If currently on Liked tab in Library, refresh tab immediately
+        if (AppState.currentPage === 'library' && this.currentTab === 'liked') {
+            const container = document.getElementById('library-content');
+            if (container) this.renderLikedTab(container);
+        }
+
+        return isNowLiked;
+    },
+
+    isLiked(videoId) {
+        if (!videoId) return false;
+        try {
+            const localLiked = JSON.parse(localStorage.getItem('wave_liked_tracks') || '[]');
+            if (localLiked.some(t => t.video_id === videoId)) return true;
+        } catch (e) {}
+        if (AppState.user?.liked_tracks?.includes(videoId)) return true;
+        return false;
+    },
+
+    updateLikeUI(videoId, isLiked) {
+        // 1. Player bar heart
+        if (typeof Player !== 'undefined' && Player.currentTrack && Player.currentTrack.video_id === videoId) {
+            const playerLikeBtn = Player.elements?.likeBtn || document.getElementById('btn-like');
+            if (playerLikeBtn) {
+                playerLikeBtn.classList.toggle('liked', isLiked);
+                const icon = playerLikeBtn.querySelector('i');
+                if (icon) {
+                    if (isLiked) {
+                        icon.setAttribute('fill', 'var(--color-error)');
+                        icon.style.fill = 'var(--color-error)';
+                        icon.style.color = 'var(--color-error)';
+                    } else {
+                        icon.removeAttribute('fill');
+                        icon.style.fill = 'none';
+                        icon.style.color = '';
+                    }
+                }
+            }
+        }
+
+        // 2. Extract page like button
+        const extractLikeBtn = document.getElementById('btn-extract-like');
+        if (extractLikeBtn && typeof Extract !== 'undefined' && Extract.currentExtractedTrack?.video_id === videoId) {
+            extractLikeBtn.classList.toggle('liked', isLiked);
+            extractLikeBtn.innerHTML = isLiked
+                ? `<i data-lucide="heart" style="fill: var(--color-error); color: var(--color-error);"></i> Liked`
+                : `<i data-lucide="heart"></i> Like`;
+            lucide.createIcons({ nodes: [extractLikeBtn] });
+        }
+    },
+
+    async unlikeTrack(videoId) {
+        await this.toggleLike(videoId);
     },
 
     async clearHistory() {

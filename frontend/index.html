@@ -24,9 +24,9 @@
     <link rel="icon" type="image/png" href="/static/icons/icon-192.png">
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/static/css/index.css">
-    <link rel="stylesheet" href="/static/css/player.css">
-    <link rel="stylesheet" href="/static/css/animations.css">
+    <link rel="stylesheet" href="/static/css/index.css?v=2.2">
+    <link rel="stylesheet" href="/static/css/player.css?v=2.2">
+    <link rel="stylesheet" href="/static/css/animations.css?v=2.2">
 </head>
 <body>
     <!-- ============================== -->
@@ -164,6 +164,10 @@
                     <i data-lucide="library"></i>
                     <span>Library</span>
                 </li>
+                <li class="nav-item" data-page="extract">
+                    <i data-lucide="link-2"></i>
+                    <span>Link</span>
+                </li>
             </ul>
 
             <div class="sidebar-divider"></div>
@@ -192,6 +196,9 @@
                     <i data-lucide="log-out"></i>
                 </button>
             </div>
+
+            <!-- Resize Handle -->
+            <div class="sidebar-resize-handle" id="sidebar-resize-handle" title="Drag to resize"></div>
         </nav>
 
         <!-- Main Content Area -->
@@ -230,6 +237,44 @@
                     </div>
                     <div class="artist-scroll" id="artists-scroll">
                         <!-- Rendered dynamically -->
+                    </div>
+                </div>
+
+                <!-- Contextual Time-of-Day Mood Mix -->
+                <div class="section" id="section-mood">
+                    <div class="section-header-row">
+                        <div>
+                            <h2 class="section-title" id="mood-title">Evening Vibes</h2>
+                            <p class="section-subtitle" id="mood-subtitle">Curated for right now</p>
+                        </div>
+                        <button class="btn-text" id="btn-mood-play-all">Play Mix</button>
+                    </div>
+                    <div class="track-scroll" id="mood-scroll">
+                        <div class="skeleton-scroll">
+                            <div class="skeleton-card skeleton"></div>
+                            <div class="skeleton-card skeleton"></div>
+                            <div class="skeleton-card skeleton"></div>
+                            <div class="skeleton-card skeleton"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Made For You Personalized Mix -->
+                <div class="section" id="section-for-you">
+                    <div class="section-header-row">
+                        <div>
+                            <h2 class="section-title">Made For You</h2>
+                            <p class="section-subtitle">Based on your favorite artists & vibes</p>
+                        </div>
+                        <button class="btn-text" id="btn-foryou-play-all">Play All</button>
+                    </div>
+                    <div class="track-scroll" id="for-you-scroll">
+                        <div class="skeleton-scroll">
+                            <div class="skeleton-card skeleton"></div>
+                            <div class="skeleton-card skeleton"></div>
+                            <div class="skeleton-card skeleton"></div>
+                            <div class="skeleton-card skeleton"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -338,6 +383,15 @@
                     <!-- Browse tags -->
                 </div>
 
+                <!-- Search Filter Tabs (shown only when there are results) -->
+                <div id="search-filter-tabs" class="search-filter-tabs hidden">
+                    <button class="search-filter-btn active" data-filter="all">All</button>
+                    <button class="search-filter-btn" data-filter="song">Songs</button>
+                    <button class="search-filter-btn" data-filter="album">Albums</button>
+                    <button class="search-filter-btn" data-filter="bgm">BGMs</button>
+                    <button class="search-filter-btn" data-filter="playlist">Playlists</button>
+                </div>
+
                 <!-- Search Results List -->
                 <div id="search-results" class="search-results">
                     <div class="search-placeholder">
@@ -444,8 +498,13 @@
                     </div>
                 </div>
 
-                <div class="section-header-row" style="margin-top: 24px;">
-                    <h2 class="section-title">Popular Songs</h2>
+                <!-- Language Filter Bar for Artist Songs -->
+                <div class="artist-language-filter-bar" id="artist-language-filter-bar">
+                    <!-- Populated dynamically (All, Telugu, Tamil, Hindi, etc.) -->
+                </div>
+
+                <div class="section-header-row" style="margin-top: 16px;">
+                    <h2 class="section-title" id="artist-songs-section-title">Popular Songs</h2>
                 </div>
                 <div class="artist-track-list" id="artist-track-list">
                     <!-- Artist tracks rendered dynamically -->
@@ -467,6 +526,118 @@
                     <div class="empty-state">
                         <i data-lucide="list-music"></i>
                         <p>Your queue is empty. Click any song to start playing.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===== LINK EXTRACTION PAGE ===== -->
+            <section id="page-extract" class="page">
+                <div class="page-header">
+                    <div>
+                        <h1 class="page-title">Extract from Link</h1>
+                        <p class="page-subtitle">Extract exact audio or find the original full-length song from any web link</p>
+                    </div>
+                </div>
+
+                <div class="extract-container">
+                    <!-- Supported Platforms Pills -->
+                    <div class="extract-platforms">
+                        <span class="platform-pill"><i data-lucide="youtube"></i> YouTube / Shorts</span>
+                        <span class="platform-pill"><i data-lucide="instagram"></i> Instagram Reels</span>
+                        <span class="platform-pill"><i data-lucide="twitter"></i> Twitter / X</span>
+                        <span class="platform-pill"><i data-lucide="video"></i> TikTok</span>
+                        <span class="platform-pill"><i data-lucide="globe"></i> Any Web Link</span>
+                    </div>
+
+                    <!-- Input Card -->
+                    <div class="extract-input-card">
+                        <div class="extract-input-wrapper">
+                            <i data-lucide="link" class="extract-input-icon"></i>
+                            <input
+                                type="url"
+                                id="extract-url-input"
+                                class="extract-input"
+                                placeholder="Paste link here (e.g. https://instagram.com/reel/..., https://youtu.be/...)"
+                                autocomplete="off"
+                            >
+                            <button class="btn-icon btn-sm hidden" id="btn-extract-clear" title="Clear URL">
+                                <i data-lucide="x"></i>
+                            </button>
+                            <button class="btn btn-secondary btn-sm" id="btn-extract-paste" title="Paste from clipboard">
+                                <i data-lucide="clipboard"></i> Paste
+                            </button>
+                        </div>
+
+                        <!-- Mode Selection -->
+                        <div class="extract-modes-label">Select Extraction Option:</div>
+                        <div class="extract-modes-grid">
+                            <label class="extract-mode-card active" id="mode-card-same">
+                                <input type="radio" name="extract_mode" value="same" checked>
+                                <div class="extract-mode-content">
+                                    <div class="extract-mode-title">
+                                        <i data-lucide="scissors"></i> Same Audio (Exact Clip)
+                                    </div>
+                                    <div class="extract-mode-desc">Extracts the exact audio duration of the link (e.g. 30s Reel, Short, or Clip).</div>
+                                </div>
+                            </label>
+
+                            <label class="extract-mode-card" id="mode-card-original">
+                                <input type="radio" name="extract_mode" value="original">
+                                <div class="extract-mode-content">
+                                    <div class="extract-mode-title">
+                                        <i data-lucide="disc-3"></i> Original Song (Full Length)
+                                    </div>
+                                    <div class="extract-mode-desc">Finds and matches the complete official full-length studio track (3–5 mins).</div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <button class="btn btn-primary btn-lg btn-extract-submit" id="btn-extract-submit">
+                            <i data-lucide="sparkles"></i> Extract Audio
+                        </button>
+                    </div>
+
+                    <!-- Loading State -->
+                    <div id="extract-loading" class="loading-state hidden" style="margin: 32px 0;">
+                        <div class="loader">
+                            <div class="loader-bar"></div>
+                            <div class="loader-bar"></div>
+                            <div class="loader-bar"></div>
+                        </div>
+                        <p id="extract-loading-text">Extracting audio stream from link...</p>
+                    </div>
+
+                    <!-- Error Alert State -->
+                    <div id="extract-error" class="extract-error-card hidden">
+                        <div class="extract-error-icon">
+                            <i data-lucide="alert-circle"></i>
+                        </div>
+                        <div class="extract-error-text">
+                            <h4 id="extract-error-title">Cannot Extract Audio</h4>
+                            <p id="extract-error-msg">Could not extract audio from this link. Make sure the link is public and accessible.</p>
+                        </div>
+                    </div>
+
+                    <!-- Result Card -->
+                    <div id="extract-result" class="extract-result-container hidden">
+                        <!-- Rendered dynamically -->
+                    </div>
+
+                    <!-- Extraction History Section -->
+                    <div class="extract-history-section" id="extract-history-section">
+                        <div class="section-header-row">
+                            <div>
+                                <h2 class="section-title">Recent Link Extractions</h2>
+                                <p class="section-subtitle">Songs you've extracted from links</p>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" id="btn-clear-extract-history">
+                                <i data-lucide="trash-2"></i> Clear History
+                            </button>
+                        </div>
+
+                        <div class="extract-history-list" id="extract-history-list">
+                            <!-- Rendered dynamically -->
+                        </div>
                     </div>
                 </div>
             </section>
@@ -508,6 +679,8 @@
                     <button class="btn-icon btn-like" id="btn-like" title="Like">
                         <i data-lucide="heart"></i>
                     </button>
+                    <!-- Language Switcher Pills — shown beside the Like button -->
+                    <div class="lang-switcher-bar hidden" id="player-lang-switcher"></div>
                 </div>
 
                 <!-- Controls (Center) -->
@@ -596,13 +769,14 @@
     <canvas id="visualizer-canvas" class="visualizer-canvas"></canvas>
 
     <!-- Scripts -->
-    <script src="/static/js/app.js"></script>
-    <script src="/static/js/auth.js"></script>
-    <script src="/static/js/player.js"></script>
-    <script src="/static/js/library.js"></script>
-    <script src="/static/js/lyrics.js"></script>
-    <script src="/static/js/local_import.js"></script>
-    <script src="/static/js/visualizer.js"></script>
+    <script src="/static/js/app.js?v=2.2"></script>
+    <script src="/static/js/auth.js?v=2.2"></script>
+    <script src="/static/js/player.js?v=2.2"></script>
+    <script src="/static/js/library.js?v=2.2"></script>
+    <script src="/static/js/extract.js?v=2.2"></script>
+    <script src="/static/js/lyrics.js?v=2.2"></script>
+    <script src="/static/js/local_import.js?v=2.2"></script>
+    <script src="/static/js/visualizer.js?v=2.2"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {

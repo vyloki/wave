@@ -38,45 +38,252 @@ STREAM_OPTS = {
 }
 
 
-def _clean_title_and_artist(raw_title: str, uploader: str) -> tuple[str, str]:
-    """Parse title and artist from raw title and uploader."""
-    clean_title = raw_title
+def detect_language(raw_title: str, uploader: str, query: str = "") -> str:
+    """Detect language of a song from title, uploader, or query."""
+    combined = f"{raw_title} {uploader} {query}".lower()
+    lang_map = {
+        "telugu": "Telugu", "tamil": "Tamil", "hindi": "Hindi",
+        "malayalam": "Malayalam", "kannada": "Kannada", "punjabi": "Punjabi",
+        "english": "English", "bengali": "Bengali", "bangla": "Bengali",
+        "marathi": "Marathi", "gujarati": "Gujarati", "bhojpuri": "Bhojpuri",
+        "korean": "Korean", "spanish": "Spanish", "japanese": "Japanese"
+    }
+    for k, v in lang_map.items():
+        if re.search(r"\b" + k + r"\b", combined):
+            return v
+
+    upl_lower = uploader.lower()
+    if any(k in upl_lower for k in ["think music telugu", "aditya music", "mango music", "lahari", "saregama telugu", "zee music telugu", "madhura", "t-series telugu"]):
+        return "Telugu"
+    if any(k in upl_lower for k in ["think music india", "think music tamil", "sun pictures", "divo", "u1 records", "sony music south", "saregama tamil", "behindwoods", "sony music tamil", "zee music tamil", "tips tamil"]):
+        return "Tamil"
+    if any(k in upl_lower for k in ["t-series", "zee music", "yrf", "sony music india", "tips official", "eros now", "saregama music"]):
+        return "Hindi"
+    if any(k in upl_lower for k in ["muzik247", "123musix", "goodwill", "saregama malayalam"]):
+        return "Malayalam"
+    if any(k in upl_lower for k in ["anand audio", "jhankar", "a2 music"]):
+        return "Kannada"
+    if any(k in upl_lower for k in ["speed records", "apna punjab", "geet mp3"]):
+        return "Punjabi"
+
+    return ""
+
+
+def _clean_part(text: str) -> str:
+    """Clean video noise tags from an individual title segment."""
+    s = text
+    noise_patterns = [
+        # Official tags
+        r'\(Official\s*(Music\s*)?Video\)',
+        r'\[Official\s*(Music\s*)?Video\]',
+        r'\(Official\s*Audio\)',
+        r'\[Official\s*Audio\]',
+        r'\(Official\s*Song\)',
+        r'\[Official\s*Song\]',
+        r'\(Official\s*Lyric\s*Video\)',
+        r'\[Official\s*Lyric\s*Video\]',
+        r'\(Official\)',
+        r'\[Official\]',
+        r'\(Lyric\s*Video\)',
+        r'\[Lyric\s*Video\]',
+        r'\(Lyrical\s*Video\)',
+        r'\[Lyrical\s*Video\]',
+        r'\bLyrical\s*Video\b',
+        r'\bLyric\s*Video\b',
+        r'\(Audio\)',
+        r'\[Audio\]',
+        r'\(Visualizer\)',
+        r'\[Visualizer\]',
+        r'\(Video\)',
+        r'\[Video\]',
+        r'4K\s*Ultra\s*HD\s*Video\s*Song',
+        r'4K\s*Video\s*Song',
+        r'4K\s*Full\s*Video',
+        r'4K\s*Video',
+        r'4K\s*Song',
+        r'\b4K\b',
+        r'\b8K\b',
+        r'Full\s*HD\s*Video\s*Song',
+        r'Full\s*HD\s*Video',
+        r'\bFull\s*Video\s*Song\b',
+        r'\bVideo\s*Song\b',
+        r'\bFull\s*Song\b',
+        r'\bFull\s*Video\b',
+        r'\bHD\s*Video\b',
+        r'\bHD\s*Song\b',
+        r'\bHD\b',
+        r'Official\s*Video',
+        r'Official\s*Song',
+        r'Music\s*Video',
+        r'Promotional\s*Video',
+        r'Promo\s*Video',
+        r'Promo\s*Song',
+        r'\(Unplugged\)',
+        r'\[Unplugged\]',
+        r'\bUnplugged\s*Version\b',
+        r'\bUnplugged\b',
+        r'\(Remastered\)',
+        r'\[Remastered\]',
+        r'\bRemastered\b',
+        r'\(Movie\s*Version\)',
+        r'\[Movie\s*Version\]',
+        r'\bMovie\s*Version\b',
+        r'\(Film\s*Version\)',
+        r'\[Film\s*Version\]',
+        r'\bFilm\s*Version\b',
+        r'\(8D\s*Audio\)',
+        r'\[8D\s*Audio\]',
+        r'\b8D\s*Audio\b',
+        r'\(Bass\s*Boosted\)',
+        r'\[Bass\s*Boosted\]',
+        r'\bBass\s*Boosted\b',
+        r'\(Slowed\s*\+?\s*Reverb\)',
+        r'\[Slowed\s*\+?\s*Reverb\]',
+        r'\bSlowed\s*\+?\s*Reverb\b',
+        r'\(Slowed\)',
+        r'\[Slowed\]',
+        r'\(Reverb\)',
+        r'\[Reverb\]',
+        r'\(Live\)',
+        r'\[Live\]',
+        r'\bLive\s*Version\b',
+        r'\(Acoustic\)',
+        r'\[Acoustic\]',
+        r'\bAcoustic\s*Version\b',
+        r'\(Cover\)',
+        r'\[Cover\]',
+        r'\bCover\s*Version\b',
+        r'\(Lyrics\)',
+        r'\[Lyrics\]',
+        r'\(With\s*Lyrics\)',
+        r'\[With\s*Lyrics\]',
+        r'\(Full\)',
+        r'\[Full\]',
+        r'\(Audio\s*Jukebox\)',
+        r'\[Audio\s*Jukebox\]',
+    ]
+    for p in noise_patterns:
+        s = re.sub(p, "", s, flags=re.IGNORECASE).strip()
+    s = re.sub(r"\(.*?Official.*?\)", "", s, flags=re.IGNORECASE).strip()
+    s = re.sub(r"\[.*?Official.*?\]", "", s, flags=re.IGNORECASE).strip()
+    s = re.sub(r"^[\s|\-:]+|[\s|\-:]+$", "", s).strip()
+    s = re.sub(r"\s{2,}", " ", s).strip()
+    return s
+
+
+def _parse_track_metadata(raw_title: str, uploader: str, query: str = "") -> dict:
+    """
+    Parse Spotify/Apple Music-style metadata:
+    - Clean Title
+    - Movie Name
+    - Language
+    - Artist
+    - Subtitle (e.g. 'Dude • Telugu')
+    """
+    language = detect_language(raw_title, uploader, query)
+
+    # Check for (From "Movie")
+    from_match = re.search(r"""(?:(?:\(|\[)?(?:From|from)\s*["\x27]([^"\x27]+)["\x27](?:\)|\])?)""", raw_title, re.IGNORECASE)
+    movie_from_tag = from_match.group(1).strip() if from_match else ""
+
+    cleaned_full = raw_title
+    if from_match:
+        cleaned_full = raw_title[:from_match.start()] + raw_title[from_match.end():]
+
+    delims = ["||", "|", " - ", " – ", " — "]
+    parts = []
+    for d in delims:
+        if d in cleaned_full:
+            parts = [_clean_part(p) for p in cleaned_full.split(d) if p.strip()]
+            break
+    if not parts:
+        parts = [_clean_part(cleaned_full)]
+
+    parts = [p for p in parts if p]
+
+    title = parts[0] if parts else raw_title
+    title = re.sub(r"\((?:Telugu|Tamil|Hindi|Malayalam|Kannada|Punjabi|English)\)", "", title, flags=re.IGNORECASE).strip()
+    title = re.sub(r"\[(?:Telugu|Tamil|Hindi|Malayalam|Kannada|Punjabi|English)\]", "", title, flags=re.IGNORECASE).strip()
+
+    movie = movie_from_tag
     artist = uploader or "Unknown Artist"
+    is_artist_track = False
 
-    # Remove common video tags
-    clean_title = re.sub(
-        r'(\(Official\s*(Music\s*)?Video\)|\[Official\s*(Music\s*)?Video\]|\(Official\s*Audio\)|\[Official\s*Audio\]|\(Lyric\s*Video\)|\[Lyric\s*Video\]|\(Audio\)|\[Audio\]|\(Visualizer\)|\[Visualizer\]|\(Video\)|\[Video\])',
-        '',
-        clean_title,
-        flags=re.IGNORECASE
-    ).strip()
+    # Check if format is "Artist - Song" (e.g. "Ed Sheeran - Shape of You")
+    if " - " in cleaned_full and not movie_from_tag and len(parts) >= 2:
+        if uploader.lower() in parts[0].lower() or parts[0].lower() in uploader.lower():
+            artist = parts[0]
+            title = parts[1]
+            is_artist_track = True
 
-    # Check for "Artist - Title" format
-    if " - " in clean_title:
-        parts = clean_title.split(" - ", 1)
-        artist_candidate = parts[0].strip()
-        title_candidate = parts[1].strip()
-        if artist_candidate and title_candidate:
-            return title_candidate, artist_candidate
+    if not movie and not is_artist_track and len(parts) > 1:
+        candidate_movie = parts[1]
+        candidate_movie = re.sub(r"\b(?:Telugu|Tamil|Hindi|Malayalam|Kannada|Punjabi|English)\b", "", candidate_movie, flags=re.IGNORECASE).strip()
+        candidate_movie = re.sub(r"^[\s|\-:]+|[\s|\-:]+$", "", candidate_movie).strip()
+        if candidate_movie and not any(kw in candidate_movie.lower() for kw in ["t-series", "music", "channel", "records", "video", "subscribe", "audio"]):
+            movie = candidate_movie
+            if len(parts) > 2:
+                candidate_artist = parts[2]
+                if candidate_artist and not any(kw in candidate_artist.lower() for kw in ["t-series", "channel", "video", "subscribe"]):
+                    artist = candidate_artist
 
-    # Check for "Artist | Title" format
-    if " | " in clean_title:
-        parts = clean_title.split(" | ", 1)
-        title_candidate = parts[0].strip()
-        artist_candidate = parts[1].strip()
-        if title_candidate:
-            return title_candidate, uploader or artist_candidate
+    if not movie and not is_artist_track and query:
+        q_words = [w for w in query.split() if w.lower() not in ["songs", "song", "video", "audio", "telugu", "tamil", "hindi", "mp3", "all", "best", "hits"]]
+        if q_words:
+            movie = " ".join(w.capitalize() for w in q_words)
 
-    # Clean uploader name (remove " - Topic", "VEVO", etc.)
     if artist.endswith(" - Topic"):
         artist = artist.replace(" - Topic", "")
-    if artist.endswith("VEVO"):
-        artist = artist.replace("VEVO", "")
+    if "VEVO" in artist:
+        artist = re.sub(r"VEVO", "", artist, flags=re.IGNORECASE).strip()
 
-    return clean_title, artist
+    if movie:
+        subtitle = f"{movie} • {language}" if language else movie
+    else:
+        subtitle = f"{artist} • {language}" if language else artist
+
+    return {
+        "title": title or raw_title,
+        "movie": movie,
+        "language": language,
+        "artist": artist,
+        "subtitle": subtitle,
+    }
 
 
-def _extract_track_from_entry(entry: dict) -> Optional[dict]:
+def _classify_track_type(raw_title: str, duration: int) -> str:
+    """
+    Classify a track as 'song', 'bgm', or 'playlist' based on title keywords and duration.
+    - playlist: duration > 600s (10 min), OR title has compilation/jukebox/playlist keywords
+    - bgm: title has bgm/background/instrumental/theme keywords AND duration < 600s
+    - song: everything else
+    """
+    title_lower = raw_title.lower()
+
+    # Playlist indicators: long compilations, jukeboxes, albums
+    playlist_keywords = [
+        'jukebox', 'audio playlist', 'video playlist', 'top 10', 'top 20', 'top 30',
+        'best of', 'collection', 'hits', 'mashup', 'medley', 'all songs',
+        'full album', 'non stop', 'nonstop', 'vol.', 'vol ', 'volume',
+        'part-1', 'part 1', 'part-2', 'part 2', '90s hits', '80s hits',
+        'superhits', 'super hits', 'evergreen', 'back to back',
+    ]
+    if duration > 600 or any(kw in title_lower for kw in playlist_keywords):
+        return 'playlist'
+
+    # BGM / instrumental indicators
+    bgm_keywords = [
+        'bgm', 'background music', 'background score', 'instrumental',
+        'theme music', 'ost', 'score', 'ringtone', 'background',
+    ]
+    if any(kw in title_lower for kw in bgm_keywords):
+        return 'bgm'
+
+    return 'song'
+
+
+
+def _extract_track_from_entry(entry: dict, query: str = "") -> Optional[dict]:
     """Extract standard track dictionary from a flat or detailed yt-dlp entry."""
     if not entry:
         return None
@@ -96,7 +303,7 @@ def _extract_track_from_entry(entry: dict) -> Optional[dict]:
     raw_title = entry.get("title") or "Unknown Song"
     uploader = entry.get("uploader") or entry.get("channel") or ""
 
-    clean_title, artist = _clean_title_and_artist(raw_title, uploader)
+    meta = _parse_track_metadata(raw_title, uploader, query)
 
     # Get thumbnail
     thumbnail = ""
@@ -112,18 +319,23 @@ def _extract_track_from_entry(entry: dict) -> Optional[dict]:
         thumbnail = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
 
     duration = int(entry.get("duration") or 0)
+    track_type = _classify_track_type(raw_title, duration)
 
     return {
         "video_id": video_id,
         "title": raw_title,
-        "track_name": clean_title,
-        "artist": artist,
-        "album": entry.get("album") or "",
+        "track_name": meta["title"],
+        "movie": meta["movie"],
+        "language": meta["language"],
+        "artist": meta["artist"],
+        "subtitle": meta["subtitle"],
+        "album": entry.get("album") or meta["movie"] or "",
         "duration": duration,
         "thumbnail": thumbnail,
         "view_count": entry.get("view_count") or 0,
         "webpage_url": f"https://www.youtube.com/watch?v={video_id}",
         "source": "youtube",
+        "track_type": track_type,
     }
 
 
@@ -144,7 +356,7 @@ async def search_youtube(
                 info = ydl.extract_info(search_query, download=False)
                 if info and "entries" in info:
                     for entry in info["entries"]:
-                        track = _extract_track_from_entry(entry)
+                        track = _extract_track_from_entry(entry, query=query)
                         if track and track["video_id"]:
                             results.append(track)
         except Exception as e:
@@ -220,9 +432,19 @@ async def get_stream_url(video_id: str) -> Optional[dict]:
 
 
 async def get_youtube_suggestions(query: str) -> List[str]:
-    """Get YouTube search autocomplete suggestions."""
+    """Get clean, music-focused YouTube search autocomplete suggestions (Spotify style)."""
     import httpx
     import json
+
+    blocked_terms = [
+        "trailer", "teaser", "review", "reaction", "full movie", "movie review",
+        "movie scenes", "scene", "scenes", "comedy", "interview", "press meet",
+        "box office", "public talk", "status", "whatsapp", "roast", "making",
+        "news", "vlog", "shorts", "short", "spoiler", "ott", "glimpse", "climax",
+        "story", "budget", "collection", "troll", "episode", "episodes", "part 1 full",
+        "full hd movie", "movie download", "movie online", "cinema", "film review",
+        "movie telugu full", "movie tamil full", "movie hindi full", "full film"
+    ]
 
     try:
         url = "https://suggestqueries-clients6.youtube.com/complete/search"
@@ -239,8 +461,38 @@ async def get_youtube_suggestions(query: str) -> List[str]:
                 end = text.rindex(")")
                 data = json.loads(text[start:end])
                 if data and len(data) > 1 and isinstance(data[1], list):
-                    suggestions = [item[0] for item in data[1] if item and isinstance(item, list)]
-                    return suggestions[:8]
+                    raw_suggestions = [item[0] for item in data[1] if item and isinstance(item, list)]
+                    cleaned_list = []
+                    seen = set()
+
+                    for s in raw_suggestions:
+                        if not isinstance(s, str):
+                            continue
+                        s_clean = s.strip()
+                        s_lower = s_clean.lower()
+
+                        # Skip blocked non-music terms
+                        if any(b in s_lower for b in blocked_terms):
+                            continue
+
+                        # If contains "movie" without music terms, skip
+                        if "movie" in s_lower:
+                            if not any(k in s_lower for k in ["song", "bgm", "music", "audio", "album", "track", "soundtrack"]):
+                                continue
+                            s_clean = re.sub(r"\bmovie\s+songs?\b", "songs", s_clean, flags=re.IGNORECASE)
+                            s_clean = re.sub(r"\bmovie\b", "", s_clean, flags=re.IGNORECASE)
+
+                        # Clean "video song/songs" -> "songs"
+                        s_clean = re.sub(r"\bvideo\s+songs?\b", "songs", s_clean, flags=re.IGNORECASE)
+                        # Clean noise tags like 4k, hd, full video, official video, etc.
+                        s_clean = re.sub(r"\b(4k|8k|hd|full\s*video|official\s*video|lyrical\s*video|lyrics|official)\b", "", s_clean, flags=re.IGNORECASE)
+                        s_clean = re.sub(r"\s{2,}", " ", s_clean).strip()
+
+                        if s_clean and s_clean.lower() not in seen:
+                            seen.add(s_clean.lower())
+                            cleaned_list.append(s_clean)
+
+                    return cleaned_list[:8]
     except Exception as e:
         logger.warning(f"Suggestions error for '{query}': {e}")
 
@@ -276,3 +528,61 @@ async def get_related_videos(video_id: str, max_results: int = 10) -> List[dict]
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _get_related)
+
+
+async def get_language_versions(
+    track_name: str,
+    movie: str = "",
+    current_video_id: str = "",
+) -> List[dict]:
+    """
+    Search YouTube for this song in multiple languages and return one best match per language.
+    Uses asyncio.gather to fan out searches in parallel.
+    Languages checked: Telugu, Tamil, Hindi, Malayalam, Kannada.
+    """
+    languages = ["Telugu", "Tamil", "Hindi", "Malayalam", "Kannada"]
+    base_query = f"{track_name} {movie}".strip()
+
+    async def _search_one_language(lang: str) -> Optional[dict]:
+        query = f"{base_query} {lang} song"
+        try:
+            results = await search_youtube(query, max_results=5)
+            for r in results:
+                vid = r.get("video_id", "")
+                # Skip the current playing song's own video
+                if vid and vid != current_video_id:
+                    detected_lang = r.get("language", "")
+                    # Only return if language matches or is close
+                    if not detected_lang or detected_lang.lower() == lang.lower():
+                        r["language"] = lang  # Force the language we searched for
+                        return r
+        except Exception as e:
+            logger.debug(f"Language version search failed for {lang}: {e}")
+        return None
+
+    # Fan out all language searches in parallel
+    tasks = [_search_one_language(lang) for lang in languages]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    versions = []
+    seen_ids = set()
+    if current_video_id:
+        seen_ids.add(current_video_id)
+
+    for i, r in enumerate(results):
+        if r and isinstance(r, dict):
+            vid = r.get("video_id", "")
+            if vid and vid not in seen_ids:
+                seen_ids.add(vid)
+                versions.append({
+                    "language": languages[i],
+                    "video_id": vid,
+                    "title": r.get("track_name") or r.get("title", ""),
+                    "thumbnail": r.get("thumbnail", ""),
+                    "artist": r.get("artist", ""),
+                    "duration": r.get("duration", 0),
+                    "movie": r.get("movie", ""),
+                    "subtitle": r.get("subtitle", ""),
+                })
+
+    return versions

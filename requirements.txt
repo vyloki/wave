@@ -30,3 +30,7 @@ python-dotenv==1.1.0
 
 # CORS & Static Files
 aiofiles==24.1.0
+
+# Optional: Background Task Queue (uncomment to enable Celery + Redis)
+# celery[redis]==5.4.0
+# redis==5.0.8

@@ -72,7 +72,7 @@ app.add_middleware(
 )
 
 # --- API Routes ---
-from app.routes import auth, search, stream, playlist, history, lyrics, recommendations, artists
+from app.routes import auth, search, stream, playlist, history, lyrics, recommendations, artists, songs, extract
 app.include_router(auth.router)
 app.include_router(search.router)
 app.include_router(stream.router)
@@ -81,6 +81,8 @@ app.include_router(history.router)
 app.include_router(lyrics.router)
 app.include_router(recommendations.router)
 app.include_router(artists.router)
+app.include_router(songs.router)
+app.include_router(extract.router)
 
 # Health check endpoint
 @app.get("/api/health", tags=["System"])

@@ -55,3 +55,6 @@ class HistoryEntry(BaseModel):
     title: str
     artist: str = ""
     thumbnail: str = ""
+    movie: Optional[str] = ""
+    language: Optional[str] = ""
+    subtitle: Optional[str] = ""

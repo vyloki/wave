@@ -14,6 +14,8 @@ const Player = {
     shuffleEnabled: false,
     volume: 80,
     elements: {},
+    playedSessionIds: new Set(),
+    isAutoFetchingRadio: false,
 
     init() {
         this.audio = new Audio();
@@ -183,9 +185,11 @@ const Player = {
             this.saveToLocalHistory(track);
         }
 
-        // Set audio stream URL (local blob or backend proxy)
+        // Set audio stream URL (local blob, extracted link proxy, or standard stream proxy)
         if (track.isLocal && track.objectUrl) {
             this.audio.src = track.objectUrl;
+        } else if (track.is_extracted || (track.video_id && track.video_id.startsWith('ext_'))) {
+            this.audio.src = `/api/extract/stream/${track.video_id}`;
         } else {
             this.audio.src = `/api/stream/${track.video_id}`;
         }
@@ -202,11 +206,16 @@ const Player = {
 
             // Record history in MongoDB (for online songs)
             if (!track.isLocal) {
+                // Snapshot the fully-resolved display metadata at play-time
+                const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : null;
                 API.post('/api/history', {
                     video_id: track.video_id,
-                    title: track.track_name || track.title || 'Unknown',
-                    artist: track.artist || 'Unknown',
+                    title: (meta?.title) || track.track_name || track.title || 'Unknown',
+                    artist: (meta?.artist) || track.artist || 'Unknown',
                     thumbnail: track.thumbnail || track.album_art || '',
+                    movie: (meta?.movie) || track.movie || '',
+                    language: (meta?.language) || track.language || '',
+                    subtitle: (meta?.subtitle) || track.subtitle || '',
                 }).catch(() => {});
             }
 
@@ -225,14 +234,160 @@ const Player = {
                 }
             }
 
-            // Check if liked
-            this.checkLikeStatus(track.video_id);
+            // Record session tracking
+            this.playedSessionIds.add(track.video_id);
+
+            // Fetch language versions in background (non-blocking)
+            if (!track.isLocal) {
+                this.fetchLanguageVersions(track);
+            }
+
+            // Proactively pre-fetch similar radio tracks to ensure infinite continuous playback
+            if (!track.isLocal) {
+                this.checkAndPrefetchRadio(track);
+            }
 
         } catch (error) {
             console.error('Audio play error:', error);
             showToast('Unable to stream audio for this track', 'error');
         }
     },
+
+    // ============================================
+    // Language Switcher (Beside Like Button)
+    // ============================================
+
+    async fetchLanguageVersions(track) {
+        const playerBar = document.getElementById('player-lang-switcher');
+        if (!playerBar) return;
+
+        const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : null;
+        const currentLang = track.language || meta?.language || 'Telugu';
+
+        try {
+            const trackName = encodeURIComponent(track.track_name || track.title || meta?.title || '');
+            const movie = encodeURIComponent(track.movie || meta?.movie || '');
+            const data = await API.get(
+                `/api/songs/${track.video_id}/languages?track_name=${trackName}&movie=${movie}`
+            );
+
+            // Construct complete list of versions including current playing track
+            const versionsMap = new Map();
+
+            // 1. Add current track first
+            versionsMap.set(currentLang.toLowerCase(), {
+                language: currentLang,
+                video_id: track.video_id,
+                title: track.track_name || track.title || meta?.title || '',
+                artist: track.artist || meta?.artist || '',
+                thumbnail: track.thumbnail || track.album_art || '',
+                duration: track.duration || 0,
+                movie: track.movie || meta?.movie || '',
+                subtitle: track.subtitle || meta?.subtitle || '',
+            });
+
+            // 2. Add alternative versions returned by API
+            if (data && Array.isArray(data.versions)) {
+                for (const v of data.versions) {
+                    if (v && v.language && v.video_id) {
+                        const langKey = v.language.toLowerCase();
+                        if (!versionsMap.has(langKey)) {
+                            versionsMap.set(langKey, {
+                                language: v.language,
+                                video_id: v.video_id,
+                                title: v.title || track.track_name || track.title || '',
+                                artist: v.artist || track.artist || '',
+                                thumbnail: v.thumbnail || track.thumbnail || track.album_art || '',
+                                duration: v.duration || track.duration || 0,
+                                movie: v.movie || track.movie || '',
+                                subtitle: v.subtitle || '',
+                            });
+                        }
+                    }
+                }
+            }
+
+            const allVersions = Array.from(versionsMap.values());
+            this.currentLanguageVersions = allVersions;
+            this.renderLangSwitcher(allVersions, currentLang, track);
+
+        } catch (e) {
+            console.debug('Language versions fetch failed:', e);
+            playerBar.classList.add('hidden');
+        }
+    },
+
+    renderLangSwitcher(versions, currentLanguage, currentTrack) {
+        const playerBar = document.getElementById('player-lang-switcher');
+        if (!playerBar) return;
+
+        // Only show if at least 2 language options exist
+        if (!versions || versions.length < 2) {
+            playerBar.classList.add('hidden');
+            playerBar.innerHTML = '';
+            return;
+        }
+
+        const html = versions.map(v => {
+            const isActive = v.language.toLowerCase() === (currentLanguage || '').toLowerCase();
+            const trackObj = {
+                video_id: v.video_id,
+                track_name: v.title || currentTrack?.track_name || currentTrack?.title || 'Unknown',
+                title: v.title || currentTrack?.track_name || currentTrack?.title || 'Unknown',
+                artist: v.artist || currentTrack?.artist || 'Unknown',
+                thumbnail: v.thumbnail || currentTrack?.thumbnail || currentTrack?.album_art || '',
+                album_art: v.thumbnail || currentTrack?.thumbnail || currentTrack?.album_art || '',
+                duration: v.duration || currentTrack?.duration || 0,
+                movie: v.movie || currentTrack?.movie || '',
+                language: v.language,
+                subtitle: v.subtitle || (v.movie ? `${v.movie} • ${v.language}` : `${v.artist} • ${v.language}`),
+            };
+            const encoded = encodeURIComponent(JSON.stringify(trackObj));
+            return `<button class="lang-pill${isActive ? ' active' : ''}"
+                            onclick="event.stopPropagation(); Player.switchToLanguage('${v.language}', '${encoded}')"
+                            title="Play in ${v.language}">${v.language}</button>`;
+        }).join('');
+
+        playerBar.innerHTML = html;
+        playerBar.classList.remove('hidden');
+    },
+
+    async switchToLanguage(language, encodedTrack) {
+        try {
+            const track = JSON.parse(decodeURIComponent(encodedTrack));
+            if (!track || !track.video_id) return;
+
+            // If already playing this track ID, don't restart
+            if (this.currentTrack?.video_id === track.video_id) {
+                return;
+            }
+
+            // Immediately mark active pill in player bar
+            document.querySelectorAll('#player-lang-switcher .lang-pill').forEach(btn => {
+                if (btn.textContent.trim().toLowerCase() === language.toLowerCase()) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            await this.play(track);
+            showToast(`Playing ${language} version`, 'info');
+
+            // Re-render switcher to update active state & payloads
+            if (this.currentLanguageVersions) {
+                this.renderLangSwitcher(this.currentLanguageVersions, language, track);
+            }
+
+            // Refresh lyrics for the new track version
+            if (typeof Lyrics !== 'undefined' && !document.getElementById('lyrics-overlay')?.classList.contains('hidden')) {
+                Lyrics.loadLyrics(track);
+            }
+        } catch (e) {
+            console.debug('switchToLanguage error:', e);
+        }
+    },
+
 
     togglePlay() {
         if (!this.audio.src) {
@@ -259,30 +414,37 @@ const Player = {
             } while (randomIndex === this.queueIndex && this.queue.length > 1);
             this.queueIndex = randomIndex;
             this.play(this.queue[this.queueIndex]);
+            this.checkAndPrefetchRadio(this.queue[this.queueIndex]);
             return;
         }
 
-        this.queueIndex++;
-        if (this.queueIndex < this.queue.length) {
+        // Advance in current queue if tracks exist
+        if (this.queueIndex + 1 < this.queue.length) {
+            this.queueIndex++;
             this.play(this.queue[this.queueIndex]);
-        } else if (this.repeatMode === 'all' && this.queue.length > 0) {
+            this.checkAndPrefetchRadio(this.queue[this.queueIndex]);
+            return;
+        }
+
+        if (this.repeatMode === 'all' && this.queue.length > 0) {
             this.queueIndex = 0;
             this.play(this.queue[0]);
-        } else if (this.currentTrack) {
+            return;
+        }
+
+        // Infinite Auto-Play: Fetch more similar radio tracks immediately if queue is at the end
+        if (this.currentTrack && !this.currentTrack.isLocal) {
             try {
-                const data = await API.get(`/api/recommendations/next?current_id=${this.currentTrack.video_id}`);
-                if (data && data.track && data.track.video_id) {
-                    this.queue.push(data.track);
-                    this.queueIndex = this.queue.length - 1;
-                    this.play(data.track);
-                    this.renderQueue();
-                    showToast(`Autoplaying: ${data.track.track_name || data.track.title}`, 'info');
+                showToast('Finding next similar song...', 'info');
+                await this.checkAndPrefetchRadio(this.currentTrack, true);
+                if (this.queueIndex + 1 < this.queue.length) {
+                    this.queueIndex++;
+                    this.play(this.queue[this.queueIndex]);
                     return;
                 }
             } catch (e) {
-                console.debug('Autoplay recommendation failed:', e);
+                console.debug('Autoplay fallback error:', e);
             }
-            this.queueIndex = this.queue.length - 1;
         }
     },
 
@@ -314,6 +476,58 @@ const Player = {
     },
 
     // ============================================
+    // Infinite Auto-Play Radio Pre-Fetcher
+    // ============================================
+
+    async checkAndPrefetchRadio(currentTrack, force = false) {
+        if (!currentTrack) currentTrack = this.currentTrack;
+        if (!currentTrack || currentTrack.isLocal || !currentTrack.video_id) return;
+
+        const remaining = this.queue.length - (this.queueIndex + 1);
+        if (!force && remaining >= 4) return;
+        if (this.isAutoFetchingRadio) return;
+
+        this.isAutoFetchingRadio = true;
+
+        try {
+            const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(currentTrack) : null;
+            const title = encodeURIComponent(meta?.title || currentTrack.track_name || currentTrack.title || '');
+            const artist = encodeURIComponent(meta?.artist || currentTrack.artist || '');
+            const movie = encodeURIComponent(meta?.movie || currentTrack.movie || '');
+            const lang = encodeURIComponent(meta?.language || currentTrack.language || 'Telugu');
+
+            const data = await API.get(
+                `/api/recommendations/radio?video_id=${currentTrack.video_id}&title=${title}&artist=${artist}&movie=${movie}&language=${lang}&limit=12`
+            );
+
+            if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
+                const existingIds = new Set(this.queue.map(t => t.video_id));
+                if (this.playedSessionIds) {
+                    this.playedSessionIds.forEach(id => existingIds.add(id));
+                }
+
+                const newTracks = data.tracks
+                    .filter(t => t && t.video_id && !existingIds.has(t.video_id))
+                    .map(t => ({
+                        ...t,
+                        isAutoPlaySuggested: true,
+                        vibe_reason: t.vibe_reason || 'Similar Vibe',
+                    }));
+
+                if (newTracks.length > 0) {
+                    this.queue.push(...newTracks);
+                    this.renderQueue();
+                    console.info(`✨ Auto-queued ${newTracks.length} similar tracks for continuous play.`);
+                }
+            }
+        } catch (e) {
+            console.debug('Radio prefetch failed:', e);
+        } finally {
+            this.isAutoFetchingRadio = false;
+        }
+    },
+
+    // ============================================
     // Persistent History
     // ============================================
 
@@ -324,14 +538,21 @@ const Player = {
 
             list = list.filter(t => t.video_id !== track.video_id);
 
+            // Snapshot fully-resolved display metadata NOW, while AppState.lastSearchQuery is correct
+            const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : null;
+
             list.unshift({
                 video_id: track.video_id,
-                title: track.track_name || track.title || 'Unknown',
-                track_name: track.track_name || track.title || 'Unknown',
-                artist: track.artist || 'Unknown',
+                title: (meta?.title) || track.track_name || track.title || 'Unknown',
+                track_name: (meta?.title) || track.track_name || track.title || 'Unknown',
+                artist: (meta?.artist) || track.artist || 'Unknown',
                 thumbnail: track.thumbnail || track.album_art || '',
                 album_art: track.thumbnail || track.album_art || '',
                 duration: track.duration || 0,
+                // Snapshot resolved display metadata - these are frozen so re-render never re-parses
+                movie: (meta?.movie) || track.movie || '',
+                language: (meta?.language) || track.language || '',
+                subtitle: (meta?.subtitle) || track.subtitle || '',
                 played_at: new Date().toISOString(),
             });
 
@@ -350,10 +571,22 @@ const Player = {
         this.queue = [...tracks];
         this.queueIndex = startIndex;
         this.renderQueue();
+        if (tracks[startIndex]) {
+            this.checkAndPrefetchRadio(tracks[startIndex]);
+        }
     },
 
     addToQueue(track) {
-        this.queue.push(track);
+        // Insert right after user-queued items, before auto-play items
+        let insertIndex = this.queue.length;
+        for (let i = this.queueIndex + 1; i < this.queue.length; i++) {
+            if (this.queue[i].isAutoPlaySuggested) {
+                insertIndex = i;
+                break;
+            }
+        }
+        track.isAutoPlaySuggested = false;
+        this.queue.splice(insertIndex, 0, track);
         this.renderQueue();
     },
 
@@ -362,7 +595,10 @@ const Player = {
         this.queue = current ? [current] : [];
         this.queueIndex = 0;
         this.renderQueue();
-        showToast('Queue cleared', 'info');
+        showToast('Queue refreshed with smart recommendations', 'info');
+        if (current) {
+            this.checkAndPrefetchRadio(current, true);
+        }
     },
 
     renderQueue() {
@@ -373,15 +609,51 @@ const Player = {
             container.innerHTML = `
                 <div class="empty-state">
                     <i data-lucide="list-music"></i>
-                    <p>Your queue is empty</p>
+                    <p>Your queue is empty. Click any song to start playing.</p>
                 </div>
             `;
             lucide.createIcons({ nodes: [container] });
             return;
         }
 
-        container.innerHTML = this.queue.map((track, i) => `
-            <div class="track-row ${i === this.queueIndex ? 'playing' : ''}"
+        const nowPlayingTrack = this.queue[this.queueIndex];
+        const upNextUser = [];
+        const autoPlayTracks = [];
+
+        for (let i = this.queueIndex + 1; i < this.queue.length; i++) {
+            const t = this.queue[i];
+            if (t.isAutoPlaySuggested) {
+                autoPlayTracks.push({ track: t, index: i });
+            } else {
+                upNextUser.push({ track: t, index: i });
+            }
+        }
+
+        const renderTrackRow = (track, i, isNowPlaying = false) => {
+            const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : {
+                title: track.track_name || track.title || 'Unknown',
+                movie: track.movie || '',
+                language: track.language || '',
+                artist: track.artist || 'Unknown Artist',
+                subtitle: track.subtitle || track.artist || 'Unknown Artist'
+            };
+            const name = escapeHtml(meta.title);
+            const movie = escapeHtml(meta.movie);
+            const language = escapeHtml(meta.language);
+            const artist = escapeHtml(meta.artist);
+
+            const subtitleHtml = meta.movie ? `
+                <span class="track-movie">${movie}</span>
+                ${language ? `<span class="track-lang-dot">•</span><span class="track-lang-text">${language}</span>` : ''}
+            ` : (meta.language ? `
+                <span class="track-movie">${artist}</span>
+                <span class="track-lang-dot">•</span><span class="track-lang-text">${language}</span>
+            ` : `
+                <span class="track-movie">${artist}</span>
+            `);
+
+            return `
+            <div class="track-row ${isNowPlaying ? 'playing' : ''}"
                  onclick="Player.play(Player.queue[${i}]); Player.queueIndex = ${i};">
                 <div class="track-row-art">
                     <img src="${track.thumbnail || track.album_art || ''}"
@@ -389,13 +661,48 @@ const Player = {
                          onerror="this.style.display='none'">
                 </div>
                 <div class="track-row-info">
-                    <div class="track-row-title">${escapeHtml(track.track_name || track.title)}</div>
-                    <div class="track-row-artist">${escapeHtml(track.artist)}</div>
+                    <div class="track-row-title">${name}</div>
+                    <div class="track-row-artist">${subtitleHtml}</div>
                 </div>
                 <div class="track-row-duration">${formatDuration(track.duration)}</div>
             </div>
-        `).join('');
+            `;
+        };
 
+        let html = '';
+
+        // 1. Now Playing Section
+        if (nowPlayingTrack) {
+            html += `
+                <div class="queue-section-header">
+                    <span class="queue-section-title">Now Playing</span>
+                </div>
+                ${renderTrackRow(nowPlayingTrack, this.queueIndex, true)}
+            `;
+        }
+
+        // 2. Up Next (User Added) Section
+        if (upNextUser.length > 0) {
+            html += `
+                <div class="queue-section-header">
+                    <span class="queue-section-title">Next in Queue</span>
+                    <span class="badge">${upNextUser.length} track${upNextUser.length > 1 ? 's' : ''}</span>
+                </div>
+                ${upNextUser.map(item => renderTrackRow(item.track, item.index, false)).join('')}
+            `;
+        }
+
+        // 3. Similar Vibes Section (Clean, simple, no badges or icons)
+        if (autoPlayTracks.length > 0) {
+            html += `
+                <div class="queue-section-header">
+                    <span class="queue-section-title">Similar Vibes</span>
+                </div>
+                ${autoPlayTracks.map(item => renderTrackRow(item.track, item.index, false)).join('')}
+            `;
+        }
+
+        container.innerHTML = html;
         lucide.createIcons({ nodes: [container] });
     },
 
@@ -470,25 +777,17 @@ const Player = {
 
     async toggleLike() {
         if (!this.currentTrack) return;
-
-        try {
-            await API.post(`/api/auth/like/${this.currentTrack.video_id}`);
-            this.elements.likeBtn?.classList.toggle('liked');
-            const isLiked = this.elements.likeBtn?.classList.contains('liked');
-            showToast(isLiked ? 'Added to Liked Songs' : 'Removed from Liked Songs', 'success');
-        } catch {
-            showToast('Sign in to save liked songs', 'info');
+        if (typeof Library !== 'undefined') {
+            await Library.toggleLike(this.currentTrack.video_id, this.currentTrack);
         }
     },
 
-    async checkLikeStatus(videoId) {
-        try {
-            const user = await API.get('/api/auth/me');
-            if (user && user.liked_tracks) {
-                const isLiked = user.liked_tracks.includes(videoId);
-                this.elements.likeBtn?.classList.toggle('liked', isLiked);
-            }
-        } catch {}
+    checkLikeStatus(videoId) {
+        if (!videoId) return;
+        const isLiked = typeof Library !== 'undefined' ? Library.isLiked(videoId) : false;
+        if (typeof Library !== 'undefined') {
+            Library.updateLikeUI(videoId, isLiked);
+        }
     },
 
     // ============================================
@@ -557,12 +856,29 @@ const Player = {
     // ============================================
 
     updateTrackUI(track) {
-        const name = track.track_name || track.title || 'Unknown';
-        const artist = track.artist || 'Unknown Artist';
+        const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : {
+            title: track.track_name || track.title || 'Unknown',
+            movie: track.movie || '',
+            language: track.language || '',
+            artist: track.artist || 'Unknown Artist',
+            subtitle: track.subtitle || track.artist || 'Unknown Artist'
+        };
+
+        const name = meta.title;
+        const sub = meta.movie ? (meta.language ? `${meta.movie} • ${meta.language}` : meta.movie) : (meta.language ? `${meta.artist} • ${meta.language}` : meta.artist);
         const art = track.thumbnail || track.album_art || '';
 
         if (this.elements.trackName) this.elements.trackName.textContent = name;
-        if (this.elements.artist) this.elements.artist.textContent = artist;
+        if (this.elements.artist) {
+            const isClickable = meta.movie && meta.movie !== 'Wave Music' && meta.movie !== 'Unknown Artist';
+            this.elements.artist.innerHTML = isClickable ? `
+                <span class="track-movie" onclick="event.stopPropagation(); if (typeof searchForCategory==='function') searchForCategory('${escapeHtml(meta.movie)}')">${escapeHtml(meta.movie)}</span>
+                ${meta.language ? `<span class="track-lang-dot">•</span><span class="track-lang-text">${escapeHtml(meta.language)}</span>` : ''}
+            ` : (meta.movie ? `
+                <span class="track-artist-plain">${escapeHtml(meta.movie)}</span>
+                ${meta.language ? `<span class="track-lang-dot">•</span><span class="track-lang-text">${escapeHtml(meta.language)}</span>` : ''}
+            ` : `<span class="track-artist-plain">${escapeHtml(sub)}</span>`);
+        }
 
         if (this.elements.artImg && art) {
             this.elements.artImg.src = art;
@@ -577,11 +893,14 @@ const Player = {
             this.elements.timeDuration.textContent = formatDuration(track.duration);
         }
 
-        document.title = `▶ ${name} — ${artist} | Wave`;
+        document.title = `▶ ${name} — ${sub} | Wave`;
 
         document.querySelectorAll('.track-row').forEach(row => {
             row.classList.toggle('playing', row.dataset.videoId === track.video_id);
         });
+
+        // Update like state for currently playing song
+        this.checkLikeStatus(track.video_id);
     },
 
     // ============================================

@@ -5,9 +5,11 @@ Wave - Recommendations & Trending Routes
 from fastapi import APIRouter, Depends, Query
 from app.services.recommendation_service import (
     get_trending_tracks,
-    get_home_feed,
+    get_personalized_home_feed,
+    get_song_radio,
     get_next_recommendation,
     record_co_listen,
+    get_time_of_day_context,
     CATEGORIES,
 )
 from app.utils.security import get_optional_user
@@ -34,10 +36,50 @@ async def trending(
     return {"category": category, "tracks": tracks, "total": len(tracks)}
 
 
-@router.get("/feed", summary="Get home feed")
+@router.get("/feed", summary="Get dynamic personalized home feed")
 async def feed(user=Depends(get_optional_user)):
-    """Get multi-section home feed."""
-    return await get_home_feed()
+    """Get multi-section home feed with time-of-day intelligence."""
+    user_id = str(user["_id"]) if user and "_id" in user else None
+    return await get_personalized_home_feed(user_id)
+
+
+@router.get("/contextual", summary="Get current time-of-day and mood context")
+async def contextual(user=Depends(get_optional_user)):
+    """Get time-of-day greeting, mood profile, and contextual tracks."""
+    user_id = str(user["_id"]) if user and "_id" in user else None
+    return await get_personalized_home_feed(user_id)
+
+
+@router.get("/radio", summary="Get endless smart song radio recommendations")
+async def radio(
+    video_id: str = Query(..., description="Currently playing video ID"),
+    title: str = Query("", description="Track title"),
+    artist: str = Query("", description="Artist name"),
+    movie: str = Query("", description="Movie name"),
+    language: str = Query("Telugu", description="Language of current song"),
+    limit: int = Query(12, ge=1, le=30, description="Number of candidate tracks"),
+    user=Depends(get_optional_user),
+):
+    """
+    Get a continuous, scored stream of similar songs for infinite auto-play.
+    Combines YouTube similarity, artist hits, transition graph, and language constraints.
+    """
+    user_id = str(user["_id"]) if user and "_id" in user else None
+    current_track = {
+        "video_id": video_id,
+        "track_name": title,
+        "title": title,
+        "artist": artist,
+        "movie": movie,
+        "language": language or "Telugu",
+    }
+    tracks = await get_song_radio(current_track, user_id=user_id, limit=limit)
+    return {
+        "video_id": video_id,
+        "language": language,
+        "tracks": tracks,
+        "total": len(tracks),
+    }
 
 
 @router.get("/next", summary="Get next recommended song")

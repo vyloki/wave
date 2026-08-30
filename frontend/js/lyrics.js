@@ -31,8 +31,9 @@ const Lyrics = {
             const title = encodeURIComponent(track.track_name || track.title || '');
             const artist = encodeURIComponent(track.artist || '');
             const duration = track.duration || 0;
+            const language = encodeURIComponent(track.language || '');
 
-            const res = await API.get(`/api/lyrics/${track.video_id}?title=${title}&artist=${artist}&duration=${duration}`);
+            const res = await API.get(`/api/lyrics/${track.video_id}?title=${title}&artist=${artist}&duration=${duration}&language=${language}`);
             loadingEl.classList.add('hidden');
 
             if (res && res.has_synced && res.synced && res.synced.length > 0) {

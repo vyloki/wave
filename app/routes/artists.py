@@ -12,77 +12,103 @@ from typing import List, Optional
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/artists", tags=["Artists"])
 
-# Curated Popular Artists across Telugu, Hindi, English, Tamil, Punjabi
+# Curated Popular Artists across Telugu, Tamil, Hindi, Punjabi, English
 FEATURED_ARTISTS = [
     {
         "id": "arijit-singh",
         "name": "Arijit Singh",
         "genre": "Bollywood / Romantic",
-        "image": "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=300&h=300&fit=crop&crop=faces",
-        "language": "Hindi",
+        "image": "https://cdn-images.dzcdn.net/images/artist/ac5350cff290edd5b69fa584b8b1bd4f/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "Hindi", "Telugu", "Bengali", "Tamil"],
+        "default_language": "Hindi",
     },
     {
         "id": "sid-sriram",
         "name": "Sid Sriram",
         "genre": "Telugu / Tamil Melodies",
-        "image": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&h=300&fit=crop&crop=faces",
-        "language": "Telugu",
+        "image": "https://cdn-images.dzcdn.net/images/artist/fbe3e1d17fc6958e047f011f74233f82/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "Telugu", "Tamil", "Malayalam", "Hindi", "Kannada"],
+        "default_language": "Telugu",
     },
     {
         "id": "anirudh-ravichander",
         "name": "Anirudh Ravichander",
         "genre": "Rock / Electronic / Tamil",
-        "image": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&h=300&fit=crop&crop=faces",
-        "language": "Tamil",
+        "image": "https://cdn-images.dzcdn.net/images/artist/9da0a547b39e99bc35c6a9724aef91bf/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "Tamil", "Telugu", "Hindi"],
+        "default_language": "Tamil",
     },
     {
         "id": "ar-rahman",
         "name": "A.R. Rahman",
         "genre": "World / Classical / Film",
-        "image": "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop&crop=faces",
-        "language": "Multilingual",
+        "image": "https://cdn-images.dzcdn.net/images/artist/bd34315ef977a62a9e28c1ab19bb8ac4/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "Tamil", "Hindi", "Telugu", "English"],
+        "default_language": "Tamil",
     },
     {
         "id": "shreya-ghoshal",
         "name": "Shreya Ghoshal",
         "genre": "Melody / Classical",
-        "image": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop&crop=faces",
-        "language": "Multilingual",
+        "image": "https://cdn-images.dzcdn.net/images/artist/3bb832d37d10ff2affcfa9afdc7c68a0/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "Hindi", "Telugu", "Tamil", "Bengali", "Kannada", "Malayalam"],
+        "default_language": "Hindi",
     },
     {
         "id": "taylor-swift",
         "name": "Taylor Swift",
         "genre": "Pop / Country",
-        "image": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=300&h=300&fit=crop&crop=faces",
-        "language": "English",
+        "image": "https://cdn-images.dzcdn.net/images/artist/e528e270424103b527f8a27ac625563b/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "English"],
+        "default_language": "English",
     },
     {
         "id": "spb",
         "name": "S.P. Balasubrahmanyam",
         "genre": "Legendary Classics",
-        "image": "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&h=300&fit=crop&crop=faces",
-        "language": "Telugu",
+        "image": "https://cdn-images.dzcdn.net/images/artist/e1ae356e308e1baad481b84dfe9d05fe/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "Telugu", "Tamil", "Kannada", "Hindi", "Malayalam"],
+        "default_language": "Telugu",
     },
     {
         "id": "diljit-dosanjh",
         "name": "Diljit Dosanjh",
         "genre": "Punjabi Pop / Folk",
-        "image": "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=300&h=300&fit=crop&crop=faces",
-        "language": "Punjabi",
-    },
-    {
-        "id": "the-weeknd",
-        "name": "The Weeknd",
-        "genre": "R&B / Synthwave",
-        "image": "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&h=300&fit=crop&crop=faces",
-        "language": "English",
+        "image": "https://cdn-images.dzcdn.net/images/artist/79b85e695e0ca6529e56bf3b628e92bd/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "Punjabi", "Hindi"],
+        "default_language": "Punjabi",
     },
     {
         "id": "devi-sri-prasad",
         "name": "Devi Sri Prasad",
         "genre": "High Voltage Beats / Telugu",
-        "image": "https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=300&h=300&fit=crop&crop=faces",
-        "language": "Telugu",
+        "image": "https://cdn-images.dzcdn.net/images/artist/abd95cd3882021d0f16006cc391f993c/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "Telugu", "Tamil", "Hindi"],
+        "default_language": "Telugu",
+    },
+    {
+        "id": "thaman-s",
+        "name": "Thaman S",
+        "genre": "Telugu / Tamil Blockbusters",
+        "image": "https://cdn-images.dzcdn.net/images/artist/f42d76b5c7e4e5dcb1afb373321f16c4/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "Telugu", "Tamil", "Hindi"],
+        "default_language": "Telugu",
+    },
+    {
+        "id": "sonu-nigam",
+        "name": "Sonu Nigam",
+        "genre": "Bollywood / Melodies",
+        "image": "https://cdn-images.dzcdn.net/images/artist/812220125c4f0db57050438b65afcf78/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "Hindi", "Kannada", "Telugu", "Bengali"],
+        "default_language": "Hindi",
+    },
+    {
+        "id": "ks-chithra",
+        "name": "K.S. Chithra",
+        "genre": "Nightingale of South / Melody",
+        "image": "https://cdn-images.dzcdn.net/images/artist/b955b3207b61e722cf4d63ee0c762b12/500x500-000000-80-0-0.jpg",
+        "languages": ["All", "Telugu", "Tamil", "Malayalam", "Kannada", "Hindi"],
+        "default_language": "Telugu",
     },
 ]
 
@@ -96,29 +122,38 @@ async def get_featured_artists():
 @router.get("/{artist_name}")
 async def get_artist_profile(
     artist_name: str,
+    language: Optional[str] = Query(default=None, description="Filter songs by language"),
     limit: int = Query(default=30, ge=5, le=50),
 ):
     """
-    Get artist profile and top hit tracks.
-    Searches YouTube and caches in MongoDB for blazing fast subsequent loads.
+    Get artist profile and individual hit tracks.
+    Filters out long compilations/jukeboxes.
+    Supports language-based querying.
     """
     if not artist_name or len(artist_name.strip()) == 0:
         raise HTTPException(status_code=400, detail="Artist name is required")
 
     artist_clean = artist_name.strip()
 
-    # Match featured artist image if available
+    # Match featured artist image and language capabilities
     matched_image = ""
     matched_genre = "Popular Artist"
+    available_languages = ["All", "Telugu", "Tamil", "Hindi", "English"]
+
     for a in FEATURED_ARTISTS:
         if a["name"].lower() == artist_clean.lower() or a["id"] == artist_clean.lower().replace(" ", "-"):
             matched_image = a["image"]
             matched_genre = a["genre"]
             artist_clean = a["name"]
+            available_languages = a.get("languages", available_languages)
             break
 
+    lang_filter = (language or "").strip()
+    if lang_filter.lower() == "all":
+        lang_filter = ""
+
     # Cache key
-    cache_key = f"artist_tracks_{artist_clean.lower()}"
+    cache_key = f"artist_tracks_{artist_clean.lower()}_{lang_filter.lower()}"
     if database.db is not None:
         cached = await database.db.cache.find_one({"key": cache_key})
         if cached and "tracks" in cached and len(cached["tracks"]) > 0:
@@ -126,28 +161,54 @@ async def get_artist_profile(
                 "artist": artist_clean,
                 "genre": matched_genre,
                 "image": matched_image or (cached["tracks"][0].get("thumbnail") if cached["tracks"] else ""),
+                "languages": available_languages,
+                "selected_language": language or "All",
                 "total_tracks": len(cached["tracks"]),
                 "tracks": cached["tracks"],
             }
 
-    # Fetch top songs for the artist
-    search_queries = [
-        f"{artist_clean} top hit songs jukebox",
-        f"{artist_clean} best songs",
-        f"{artist_clean} all songs",
-    ]
+    # Fetch individual single songs (strictly avoid jukeboxes / full albums)
+    if lang_filter:
+        search_queries = [
+            f"{artist_clean} {lang_filter} hit songs official audio",
+            f"{artist_clean} {lang_filter} latest songs",
+            f"{artist_clean} {lang_filter} song",
+        ]
+    else:
+        search_queries = [
+            f"{artist_clean} top hit songs official audio",
+            f"{artist_clean} latest songs",
+            f"{artist_clean} hit song",
+        ]
 
     tracks = []
     seen = set()
 
-    for q in search_queries[:2]:
-        results = await youtube_service.search_youtube(q, max_results=limit)
+    for q in search_queries:
+        results = await youtube_service.search_youtube(q, max_results=20)
         for r in results:
             vid = r.get("video_id")
-            if vid and vid not in seen:
-                seen.add(vid)
+            if not vid or vid in seen:
+                continue
+
+            dur = int(r.get("duration") or 0)
+            raw_title = (r.get("title") or r.get("track_name") or "").lower()
+
+            # STRICT SINGLE SONG FILTER (exclude long compilations, jukeboxes, albums)
+            if dur > 450:  # > 7.5 minutes is not an individual song
+                continue
+            if dur < 30 and dur > 0:
+                continue
+            if any(k in raw_title for k in ["jukebox", "full album", "all songs in one", "non stop", "nonstop", "superhits collection", "top 10", "top 20", "top 30", "part 1", "part 2"]):
+                continue
+            if r.get("track_type") == "playlist":
+                continue
+
+            seen.add(vid)
+            if not r.get("artist") or r["artist"] == "Unknown Artist":
                 r["artist"] = artist_clean
-                tracks.append(r)
+            tracks.append(r)
+
             if len(tracks) >= limit:
                 break
         if len(tracks) >= limit:
@@ -156,18 +217,23 @@ async def get_artist_profile(
     if not matched_image and tracks:
         matched_image = tracks[0].get("thumbnail", "")
 
-    # Cache for 12 hours
+    # Cache in DB
     if database.db is not None and tracks:
-        await database.db.cache.update_one(
-            {"key": cache_key},
-            {"$set": {"key": cache_key, "tracks": tracks}},
-            upsert=True,
-        )
+        try:
+            await database.db.cache.update_one(
+                {"key": cache_key},
+                {"$set": {"key": cache_key, "tracks": tracks}},
+                upsert=True,
+            )
+        except Exception:
+            pass
 
     return {
         "artist": artist_clean,
         "genre": matched_genre,
         "image": matched_image,
+        "languages": available_languages,
+        "selected_language": language or "All",
         "total_tracks": len(tracks),
         "tracks": tracks,
     }

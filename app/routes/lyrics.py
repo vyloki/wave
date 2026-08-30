@@ -3,7 +3,7 @@ Wave - Lyrics Routes
 Fetch and serve song lyrics with sync timestamps.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from app.services.lyrics_service import get_lyrics
 from app.utils.security import get_optional_user
 from app.database import get_db
@@ -23,16 +23,20 @@ async def fetch_lyrics(
     title: str = Query("", description="Track title"),
     artist: str = Query("", description="Artist name"),
     duration: int = Query(0, description="Track duration in seconds"),
+    language: str = Query("", description="Track language (Telugu, Tamil, Hindi, etc.)"),
     user=Depends(get_optional_user),
     db=Depends(get_db),
 ):
-    """Fetch synced or plain lyrics for a track."""
+    """Fetch synced or plain lyrics for a track. Language-aware caching."""
+    # Language-keyed cache so Telugu and Tamil lyrics for the same video_id are stored separately
+    cache_id = f"{video_id}_{language.lower()}" if language else video_id
+
     # Check cache
     if db is not None:
         try:
-            cached = await db.lyrics_cache.find_one({"_id": video_id})
+            cached = await db.lyrics_cache.find_one({"_id": cache_id})
             if cached:
-                logger.info(f"📦 Lyrics cache hit: {video_id}")
+                logger.info(f"📦 Lyrics cache hit: {cache_id}")
                 return {
                     "video_id": video_id,
                     "synced": cached.get("synced_lyrics", []),
@@ -43,7 +47,7 @@ async def fetch_lyrics(
         except Exception:
             pass
 
-    # Get track info from song_cache if not provided
+    # Get track info from song_cache if title not provided
     if not title and db is not None:
         try:
             track_cache = await db.song_cache.find_one({"_id": video_id})
@@ -51,24 +55,27 @@ async def fetch_lyrics(
                 title = track_cache.get("track_name") or track_cache.get("title", "")
                 artist = track_cache.get("artist", "")
                 duration = track_cache.get("duration", 0)
+                if not language:
+                    language = track_cache.get("language", "")
         except Exception:
             pass
 
     if not title:
         title = f"track {video_id}"
 
-    # Fetch from LRCLIB
+    # Fetch from LRCLIB (now language-aware)
     result = await get_lyrics(
         track_name=title,
         artist_name=artist,
         duration=duration,
+        language=language,
     )
 
     if result:
         if db is not None:
             try:
                 await db.lyrics_cache.update_one(
-                    {"_id": video_id},
+                    {"_id": cache_id},
                     {
                         "$set": {
                             **result,

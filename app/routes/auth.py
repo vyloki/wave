@@ -3,7 +3,8 @@ Wave - Authentication Routes
 User registration, login, token refresh, and profile management.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
+from typing import Optional, Dict, Any
 from app.database import get_db
 from app.models.user import (
     UserRegister,
@@ -256,16 +257,18 @@ async def update_profile(
 
 @router.post(
     "/like/{video_id}",
-    response_model=MessageResponse,
     summary="Toggle like on a track"
 )
 async def toggle_like(
     video_id: str,
+    body: Optional[Dict[str, Any]] = Body(default=None),
     user: dict = Depends(get_current_user),
     db=Depends(get_db)
 ):
-    """Toggle like/unlike on a track."""
+    """Toggle like/unlike on a track with full track metadata preservation."""
     liked_tracks = user.get("liked_tracks", [])
+    user_id_str = str(user["_id"])
+    track_data = body.get("track") if (body and isinstance(body, dict)) else None
 
     if video_id in liked_tracks:
         # Unlike
@@ -273,11 +276,141 @@ async def toggle_like(
             {"_id": ObjectId(user["_id"])},
             {"$pull": {"liked_tracks": video_id}}
         )
-        return MessageResponse(message="Track unliked")
+        if db is not None:
+            await db.liked_songs.delete_one({"user_id": user_id_str, "video_id": video_id})
+        return {"status": "unliked", "is_liked": False, "message": "Track unliked"}
     else:
         # Like
         await db.users.update_one(
             {"_id": ObjectId(user["_id"])},
             {"$addToSet": {"liked_tracks": video_id}}
         )
-        return MessageResponse(message="Track liked")
+        if db is not None:
+            # If track_data was not sent, check song_cache or stream_cache
+            if not track_data:
+                cached = await db.song_cache.find_one({"_id": video_id})
+                if cached:
+                    track_data = cached
+                else:
+                    stream_cached = await db.stream_cache.find_one({"_id": video_id})
+                    if stream_cached:
+                        track_data = stream_cached
+
+            title = (track_data.get("title") or track_data.get("track_name") or "Liked Song") if track_data else "Liked Song"
+            artist = (track_data.get("artist") or "") if track_data else ""
+            movie = (track_data.get("movie") or "") if track_data else ""
+            language = (track_data.get("language") or "") if track_data else ""
+            thumbnail = (track_data.get("thumbnail") or track_data.get("album_art") or "") if track_data else ""
+            duration = int((track_data.get("duration") or 0)) if track_data else 0
+            is_extracted = bool(track_data.get("is_extracted") or video_id.startswith("ext_")) if track_data else video_id.startswith("ext_")
+            platform = (track_data.get("platform") or "YouTube") if track_data else "YouTube"
+
+            song_doc = {
+                "user_id": user_id_str,
+                "video_id": video_id,
+                "title": title,
+                "track_name": title,
+                "artist": artist,
+                "movie": movie,
+                "language": language,
+                "thumbnail": thumbnail,
+                "album_art": thumbnail,
+                "duration": duration,
+                "is_extracted": is_extracted,
+                "platform": platform,
+                "track": track_data or {
+                    "video_id": video_id,
+                    "title": title,
+                    "artist": artist,
+                    "movie": movie,
+                    "language": language,
+                    "thumbnail": thumbnail,
+                    "duration": duration,
+                    "is_extracted": is_extracted,
+                    "platform": platform
+                },
+                "liked_at": datetime.now(timezone.utc),
+            }
+
+            await db.liked_songs.update_one(
+                {"user_id": user_id_str, "video_id": video_id},
+                {"$set": song_doc},
+                upsert=True
+            )
+
+        return {"status": "liked", "is_liked": True, "message": "Track liked"}
+
+
+@router.get(
+    "/liked",
+    summary="Get all liked tracks"
+)
+async def get_liked_tracks(
+    user: dict = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    """Retrieve full track objects for all liked songs of the user."""
+    user_id_str = str(user["_id"])
+    if db is None:
+        return {"tracks": [], "total": 0}
+
+    # 1. Lookup from liked_songs collection (instant, preserved metadata)
+    cursor = db.liked_songs.find({"user_id": user_id_str}).sort("liked_at", -1)
+    docs = await cursor.to_list(200)
+
+    tracks = []
+    seen_ids = set()
+
+    for doc in docs:
+        vid = doc.get("video_id")
+        if vid and vid not in seen_ids:
+            seen_ids.add(vid)
+            t = doc.get("track") or doc
+            t["video_id"] = vid
+            t["title"] = doc.get("title") or t.get("title") or "Liked Song"
+            t["track_name"] = t["title"]
+            t["artist"] = doc.get("artist") or t.get("artist") or ""
+            t["movie"] = doc.get("movie") or t.get("movie") or ""
+            t["language"] = doc.get("language") or t.get("language") or ""
+            t["thumbnail"] = doc.get("thumbnail") or t.get("thumbnail") or ""
+            t["album_art"] = t["thumbnail"]
+            t["duration"] = doc.get("duration") or t.get("duration") or 0
+            t["is_extracted"] = doc.get("is_extracted") or vid.startswith("ext_")
+            t["is_liked"] = True
+            tracks.append(t)
+
+    # 2. Backfill any IDs in user.liked_tracks not yet in liked_songs
+    user_liked_ids = user.get("liked_tracks", [])
+    for vid in user_liked_ids:
+        if vid not in seen_ids:
+            cached = await db.song_cache.find_one({"_id": vid})
+            if cached:
+                cached.pop("_id", None)
+                cached["video_id"] = vid
+                cached["is_liked"] = True
+                tracks.append(cached)
+                seen_ids.add(vid)
+            else:
+                stream_cached = await db.stream_cache.find_one({"_id": vid})
+                if stream_cached:
+                    tracks.append({
+                        "video_id": vid,
+                        "title": stream_cached.get("title") or "Liked Track",
+                        "artist": stream_cached.get("artist") or "",
+                        "thumbnail": "",
+                        "duration": stream_cached.get("duration", 0),
+                        "is_extracted": vid.startswith("ext_"),
+                        "is_liked": True
+                    })
+                else:
+                    tracks.append({
+                        "video_id": vid,
+                        "title": "Liked Song",
+                        "artist": "",
+                        "thumbnail": f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if not vid.startswith("ext_") else "",
+                        "duration": 0,
+                        "is_liked": True,
+                    })
+                seen_ids.add(vid)
+
+    return {"tracks": tracks, "total": len(tracks)}

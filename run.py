@@ -16,7 +16,7 @@ def main():
     """Start the Wave server."""
     port = int(os.environ.get("PORT", str(settings.port)))
     host = os.environ.get("HOST", settings.host)
-    debug = os.environ.get("DEBUG", "false").lower() in ("1", "true", "yes")
+    debug = os.environ.get("DEBUG", "true").lower() in ("1", "true", "yes")
 
     print()
     print("  🎵  W A V E  ")

@@ -96,7 +96,8 @@ async def search(
 async def suggestions(
     q: str = Query(..., min_length=1, max_length=100, description="Query"),
 ):
-    """Get autocomplete suggestions from YouTube."""
+    """Get clean music-focused autocomplete suggestions."""
+    from app.services.youtube_service import get_youtube_suggestions
     results = await get_youtube_suggestions(q)
     return {"query": q, "suggestions": results}
 

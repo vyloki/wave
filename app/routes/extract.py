@@ -86,6 +86,9 @@ async def clear_history_endpoint(
     return {"status": "cleared"}
 
 
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+
 @router.get("/stream/{extraction_id}", summary="Stream extracted audio")
 async def stream_extracted_audio(
     extraction_id: str,
@@ -104,7 +107,11 @@ async def stream_extracted_audio(
 
     stream_url = cached["stream_url"]
 
-    headers = {}
+    headers = {
+        "User-Agent": DEFAULT_USER_AGENT,
+        "Accept": "*/*",
+        "Accept-Encoding": "identity",
+    }
     range_header = request.headers.get("range")
     if range_header:
         headers["Range"] = range_header
@@ -134,7 +141,7 @@ async def stream_extracted_audio(
                 await response.aclose()
                 await client.aclose()
 
-        status_code = 206 if range_header else 200
+        status_code = response.status_code if response.status_code in (200, 206) else (206 if range_header else 200)
         return StreamingResponse(
             stream_generator(),
             status_code=status_code,

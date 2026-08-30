@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/stream", tags=["Streaming"])
 
 
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+
 @router.get(
     "/{video_id}",
     summary="Stream audio for a video"
@@ -26,14 +29,7 @@ async def stream_audio(
     user: dict = Depends(get_optional_user),
 ):
     """
-    Stream audio from YouTube through our server.
-
-    This endpoint proxies the audio stream, which:
-    1. Avoids CORS issues in the browser
-    2. Hides the YouTube URL from the client
-    3. Supports range requests for seeking
-
-    The audio is streamed in chunks — not downloaded fully first.
+    Stream audio from YouTube through our server with seeking and auto-token recovery.
     """
     # Get the stream URL (cached or fresh)
     stream_url = await get_cached_stream_url(video_id)
@@ -44,18 +40,33 @@ async def stream_audio(
         )
 
     # Forward range headers for seeking support
-    headers = {}
+    headers = {
+        "User-Agent": DEFAULT_USER_AGENT,
+        "Accept": "*/*",
+        "Accept-Encoding": "identity",
+    }
     range_header = request.headers.get("range")
     if range_header:
         headers["Range"] = range_header
 
     try:
-        # Stream the audio through our server
         client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
         response = await client.send(
             client.build_request("GET", stream_url, headers=headers),
             stream=True,
         )
+
+        # If expired YouTube CDN token (403/404/410), refresh stream URL on the fly
+        if response.status_code in (403, 404, 410):
+            logger.info(f"🔄 Stream URL expired (HTTP {response.status_code}) for {video_id}, extracting fresh stream...")
+            await response.aclose()
+            fresh_info = await get_stream_url(video_id)
+            if fresh_info and fresh_info.get("url"):
+                stream_url = fresh_info["url"]
+                response = await client.send(
+                    client.build_request("GET", stream_url, headers=headers),
+                    stream=True,
+                )
 
         # Determine content type
         content_type = response.headers.get(
@@ -89,7 +100,7 @@ async def stream_audio(
                 await response.aclose()
                 await client.aclose()
 
-        status_code = 206 if range_header else 200
+        status_code = response.status_code if response.status_code in (200, 206) else (206 if range_header else 200)
 
         return StreamingResponse(
             stream_generator(),

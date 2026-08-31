@@ -46,36 +46,92 @@ LANG_EXCLUSIVE_LABELS = {
 }
 
 
-def _score_result_for_language(result: dict, language: str) -> int:
+def is_unwanted_foreign_script(text: str, target_lang: str) -> bool:
+    """Check if text contains foreign scripts unrelated to target language."""
+    if not text:
+        return False
+    lang_lower = (target_lang or "").lower()
+
+    # If target is not East Asian, reject CJK ideographs, Hiragana, Katakana, Hangul
+    if lang_lower not in ["chinese", "japanese", "korean", "mandarin", "cantonese"]:
+        if re.search(r"[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7a3]", text):
+            return True
+
+    # If target is not Russian/Cyrillic, reject Cyrillic
+    if lang_lower not in ["russian", "ukrainian", "bulgarian"]:
+        if re.search(r"[\u0400-\u04ff]", text):
+            return True
+
+    # If target is not Arabic/Persian/Urdu, reject Arabic script
+    if lang_lower not in ["arabic", "persian", "urdu"]:
+        if re.search(r"[\u0600-\u06ff]", text):
+            return True
+
+    # If target is not Thai, reject Thai script
+    if lang_lower != "thai":
+        if re.search(r"[\u0e00-\u0e7f]", text):
+            return True
+
+    return False
+
+
+def _score_result_for_language(result: dict, language: str, album_name: str = "") -> int:
     """
     Score a LRCLIB result based on how well it matches the target language.
-    Higher is better.
+    Strictly disqualifies foreign scripts (e.g. Chinese CJK when Telugu/Tamil/Hindi/English requested).
     """
-    if not language:
-        return 0
-
     artist_name = (result.get("artistName") or "").lower()
     track_name = (result.get("trackName") or "").lower()
-    album_name = (result.get("albumName") or "").lower()
-    plain = (result.get("plainLyrics") or "").lower()
-    combined = f"{artist_name} {track_name} {album_name}"
+    result_album = (result.get("albumName") or "").lower()
+    plain = (result.get("plainLyrics") or "")
+    combined = f"{artist_name} {track_name} {result_album} {plain[:300]}".lower()
+
+    # Strictly reject foreign script matches (e.g. Chinese pop song matching English word)
+    if is_unwanted_foreign_script(f"{artist_name} {track_name} {result_album} {plain[:500]}", language):
+        return -1000
+
+    if not language:
+        return 0
 
     score = 0
     hints = LANG_LABEL_HINTS.get(language, [])
 
     for hint in hints:
         if hint in combined:
-            score += 12
+            score += 15
             break
+
+    # If movie/album is provided, give strong boost if candidate mentions it
+    if album_name:
+        alb_clean = album_name.lower().strip()
+        if alb_clean and (alb_clean in track_name or alb_clean in result_album):
+            score += 35
+
+    # If target language name explicitly appears in track title or album name
+    if language.lower() in track_name or language.lower() in result_album:
+        score += 25
 
     # If looking for Telugu, check if plain lyrics contain Telugu Unicode
     if language.lower() == "telugu":
-        if any('\u0C00' <= ch <= '\u0C7F' for ch in (result.get("plainLyrics") or "")):
-            score += 20
+        if any('\u0C00' <= ch <= '\u0C7F' for ch in plain):
+            score += 35
         # Penalize Tamil unicode if Telugu requested
-        if any('\u0B80' <= ch <= '\u0BFF' for ch in (result.get("plainLyrics") or "")):
-            score -= 25
+        if any('\u0B80' <= ch <= '\u0BFF' for ch in plain):
+            score -= 30
 
+    # If looking for Tamil, check if plain lyrics contain Tamil Unicode
+    elif language.lower() == "tamil":
+        if any('\u0B80' <= ch <= '\u0BFF' for ch in plain):
+            score += 35
+        if any('\u0C00' <= ch <= '\u0C7F' for ch in plain):
+            score -= 30
+
+    # If looking for Hindi, check if plain lyrics contain Devanagari Unicode
+    elif language.lower() == "hindi":
+        if any('\u0900' <= ch <= '\u097F' for ch in plain):
+            score += 35
+
+    # Penalize exclusive hints from other languages
     for lang, hint_list in LANG_LABEL_HINTS.items():
         if lang.lower() == language.lower():
             continue
@@ -89,16 +145,16 @@ def _score_result_for_language(result: dict, language: str) -> int:
             continue
         for label in labels:
             if label in combined:
-                score -= 18
+                score -= 25
                 break
 
     return score
 
 
-def clean_song_titles(raw_title: str, raw_artist: str = "") -> List[str]:
+def clean_song_titles(raw_title: str, raw_artist: str = "", album_name: str = "", language: str = "") -> List[str]:
     """
-    Generate clean candidate search queries from a raw YouTube title and artist.
-    Extracts core song names by stripping parenthetical noise, tags, and record labels.
+    Generate clean candidate search queries from raw title, artist, movie/album, and language.
+    Prioritizes specific language and album queries first before falling back to generic titles.
     """
     candidates = []
 
@@ -109,21 +165,29 @@ def clean_song_titles(raw_title: str, raw_artist: str = "") -> List[str]:
     parts = re.split(r'[\|\-:\/•~]', no_parens)
     parts = [p.strip() for p in parts if p.strip()]
 
+    p0_clean = ""
     if parts:
         p0 = parts[0]
         p0_clean = re.sub(r'\b(song|video|audio|lyrical|lyrics|full)\b', '', p0, flags=re.IGNORECASE).strip()
-        if p0_clean:
-            candidates.append(p0_clean)
 
-        if len(parts) > 1:
-            p1_clean = re.sub(r'\b(song|video|audio|lyrical|lyrics|full|official|hd|4k)\b', '', parts[1], flags=re.IGNORECASE).strip()
-            if p0_clean and p1_clean:
-                candidates.append(f"{p0_clean} {p1_clean}")
+    base_title = p0_clean or raw_title.strip()
+
+    # Prioritize specific queries (critical for Indian movie songs e.g. "Boom Boom Dude Telugu")
+    if album_name and album_name.strip():
+        alb = album_name.strip()
+        if language and language.strip():
+            candidates.append(f"{base_title} {alb} {language.strip()}")
+        candidates.append(f"{base_title} {alb}")
+
+    # Add language candidate query (e.g. "Boom Boom Telugu")
+    if language and language.strip():
+        candidates.append(f"{base_title} {language.strip()}")
 
     artist_clean = raw_artist.strip()
     if artist_clean and artist_clean.lower() not in RECORD_LABELS:
-        if candidates:
-            candidates.insert(0, f"{candidates[0]} {artist_clean}")
+        candidates.append(f"{base_title} {artist_clean}")
+
+    candidates.append(base_title)
 
     clean_all = re.sub(r'\b(song|video|audio|lyrical|lyrics|full|hd|4k|official|jukebox|telugu|hindi|tamil|english|punjabi|remix)\b', '', raw_title, flags=re.IGNORECASE)
     clean_all = re.sub(r'[\(\)\[\]\|\-@:\/~•]', ' ', clean_all)
@@ -151,12 +215,13 @@ async def get_lyrics(
 ) -> Optional[dict]:
     """
     Fetch lyrics from LRCLIB using smart multi-tier query fallback.
-    Language-aware and duration-aware: prefers results matching the target language and audio duration.
+    Language-aware, script-filtering, duration-aware, and album-aware.
     Automatically transliterates Telugu/Indic lyrics to English spelling.
     """
-    queries = clean_song_titles(track_name, artist_name)
-    logger.info(f"🔍 Searching lyrics for '{track_name}' (dur={duration}s, lang={language!r}) with candidates: {queries}")
+    queries = clean_song_titles(track_name, artist_name, album_name, language)
+    logger.info(f"🔍 Searching lyrics for '{track_name}' (album={album_name!r}, dur={duration}s, lang={language!r}) with candidates: {queries}")
 
+    all_scored = []
     try:
         async with httpx.AsyncClient(timeout=6.0) as client:
             for q in queries:
@@ -167,11 +232,13 @@ async def get_lyrics(
 
                 if resp.status_code == 200:
                     results = resp.json()
-                    if results and isinstance(results, list) and len(results) > 0:
-                        # Score all results by language match & duration proximity
-                        scored = []
+                    if results and isinstance(results, list):
                         for r in results:
-                            lang_score = _score_result_for_language(r, language)
+                            lang_score = _score_result_for_language(r, language, album_name)
+                            if lang_score <= -500:
+                                # Foreign script disqualified
+                                continue
+
                             has_synced = bool(r.get("syncedLyrics"))
 
                             # Calculate duration proximity score
@@ -180,28 +247,36 @@ async def get_lyrics(
                             if duration > 0 and r_dur > 0:
                                 diff = abs(r_dur - float(duration))
                                 if diff <= 4:
-                                    dur_score = 25  # Exact or near-exact song length match
+                                    dur_score = 30  # Exact or near-exact song length match
                                 elif diff <= 12:
                                     dur_score = 15
                                 elif diff <= 25:
                                     dur_score = 5
                                 elif diff > 45:
-                                    dur_score = -20 # Mismatched edit/remix
+                                    dur_score = -25 # Mismatched edit/remix
 
                             total_score = lang_score + (25 if has_synced else 0) + dur_score
-                            scored.append((total_score, has_synced, dur_score, r))
+                            all_scored.append((total_score, has_synced, dur_score, r, q))
 
-                        # Sort: highest total score first
-                        scored.sort(key=lambda x: x[0], reverse=True)
+                        # If we matched high-confidence language/duration candidates in this query, stop querying
+                        if any(s[0] >= 35 for s in all_scored):
+                            break
 
-                        for total_score, has_synced, dur_score, r in scored:
-                            parsed = _parse_lyrics_response(r)
-                            if parsed and (parsed["synced_lyrics"] or parsed["plain_lyrics"]):
-                                logger.info(
-                                    f"🎤 Lyrics found for '{q}' (score={total_score}, dur_score={dur_score}): "
-                                    f"{r.get('trackName')} by {r.get('artistName')}"
-                                )
-                                return parsed
+            if all_scored:
+                all_scored.sort(key=lambda x: x[0], reverse=True)
+                for total_score, has_synced, dur_score, r, q in all_scored:
+                    parsed = _parse_lyrics_response(r)
+                    if parsed and (parsed["synced_lyrics"] or parsed["plain_lyrics"]):
+                        logger.info(
+                            f"🎤 Selected lyrics for '{track_name}' (query='{q}', score={total_score}, dur_score={dur_score}): "
+                            f"{r.get('trackName')} by {r.get('artistName')}"
+                        )
+                        return parsed
+
+    except Exception as e:
+        logger.warning(f"Lyrics search error for '{track_name}': {e}")
+
+    return None
 
     except Exception as e:
         logger.warning(f"Lyrics search error for '{track_name}': {e}")

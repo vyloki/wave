@@ -22,12 +22,13 @@ async def fetch_lyrics(
     video_id: str,
     title: str = Query("", description="Track title"),
     artist: str = Query("", description="Artist name"),
+    movie: str = Query("", description="Movie / Album name"),
     duration: int = Query(0, description="Track duration in seconds"),
     language: str = Query("", description="Track language (Telugu, Tamil, Hindi, etc.)"),
     user=Depends(get_optional_user),
     db=Depends(get_db),
 ):
-    """Fetch synced or plain lyrics for a track. Language-aware caching."""
+    """Fetch synced or plain lyrics for a track. Language-aware and movie-aware caching."""
     # Language-keyed cache so Telugu and Tamil lyrics for the same video_id are stored separately
     cache_id = f"{video_id}_{language.lower()}" if language else video_id
 
@@ -54,6 +55,7 @@ async def fetch_lyrics(
             if track_cache:
                 title = track_cache.get("track_name") or track_cache.get("title", "")
                 artist = track_cache.get("artist", "")
+                movie = track_cache.get("movie") or movie
                 duration = track_cache.get("duration", 0)
                 if not language:
                     language = track_cache.get("language", "")
@@ -63,10 +65,11 @@ async def fetch_lyrics(
     if not title:
         title = f"track {video_id}"
 
-    # Fetch from LRCLIB (now language-aware)
+    # Fetch from LRCLIB (now language, movie, and duration-aware)
     result = await get_lyrics(
         track_name=title,
         artist_name=artist,
+        album_name=movie,
         duration=duration,
         language=language,
     )

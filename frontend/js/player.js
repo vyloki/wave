@@ -175,6 +175,9 @@ const Player = {
     playedSessionIds: new Set(),
     isAutoFetchingRadio: false,
     activeEngine: 'audio', // 'audio' or 'yt'
+    audioCtx: null,
+    wakeLock: null,
+    _bgAudioInitialized: false,
 
     init() {
         this.audio = new Audio();
@@ -189,6 +192,17 @@ const Player = {
         this.bindAudioEvents();
         this.setupMediaSession();
 
+        // Unlock audio context and background playback on first user touch / click
+        const unlockAudio = () => {
+            this.initBackgroundAudioSession();
+            window.removeEventListener('click', unlockAudio);
+            window.removeEventListener('touchstart', unlockAudio);
+            window.removeEventListener('keydown', unlockAudio);
+        };
+        window.addEventListener('click', unlockAudio, { passive: true });
+        window.addEventListener('touchstart', unlockAudio, { passive: true });
+        window.addEventListener('keydown', unlockAudio, { passive: true });
+
         const savedVolume = localStorage.getItem('wave_volume');
         if (savedVolume !== null) {
             this.volume = parseInt(savedVolume);
@@ -196,6 +210,74 @@ const Player = {
             if (this.elements.volumeSlider) {
                 this.elements.volumeSlider.value = this.volume;
             }
+        }
+
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    },
+
+    initBackgroundAudioSession() {
+        if (this._bgAudioInitialized) {
+            if (this.audioCtx && this.audioCtx.state === 'suspended') {
+                this.audioCtx.resume().catch(() => {});
+            }
+            return;
+        }
+        this._bgAudioInitialized = true;
+
+        try {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (AudioContextClass && !this.audioCtx) {
+                this.audioCtx = new AudioContextClass();
+                // Create an inaudible silent buffer running continuously in background.
+                // Keeps Web Audio output active on iOS/Android WebKit, preventing OS thread
+                // suspension when screen is turned off or device locked.
+                const buffer = this.audioCtx.createBuffer(1, 22050, 22050);
+                const source = this.audioCtx.createBufferSource();
+                source.buffer = buffer;
+                source.loop = true;
+                const gain = this.audioCtx.createGain();
+                gain.gain.value = 0.0001;
+                source.connect(gain);
+                gain.connect(this.audioCtx.destination);
+                source.start(0);
+            }
+            if (this.audioCtx && this.audioCtx.state === 'suspended') {
+                this.audioCtx.resume().catch(() => {});
+            }
+        } catch (e) {
+            console.debug('Background audio session initialization:', e);
+        }
+
+        // Screen Wake Lock handling during active playback
+        if ('wakeLock' in navigator) {
+            document.addEventListener('visibilitychange', async () => {
+                if (document.visibilityState === 'visible' && this.isPlaying) {
+                    this.requestWakeLock();
+                }
+            });
+        }
+    },
+
+    async requestWakeLock() {
+        if ('wakeLock' in navigator && this.isPlaying) {
+            try {
+                if (this.wakeLock) return;
+                this.wakeLock = await navigator.wakeLock.request('screen');
+                this.wakeLock.addEventListener('release', () => {
+                    this.wakeLock = null;
+                });
+            } catch (err) {
+                console.debug('WakeLock request:', err);
+            }
+        }
+    },
+
+    releaseWakeLock() {
+        if (this.wakeLock) {
+            this.wakeLock.release().catch(() => {});
+            this.wakeLock = null;
         }
     },
 
@@ -222,6 +304,22 @@ const Player = {
             trackInfo: document.getElementById('player-track-info'),
             barsIndicator: document.getElementById('player-bars-indicator'),
             downloadBtn: document.getElementById('btn-download'),
+
+            // Mobile-Exclusive Lyrics Controls
+            lyricsPlayBtn: document.getElementById('btn-lyrics-play'),
+            lyricsPrevBtn: document.getElementById('btn-lyrics-prev'),
+            lyricsNextBtn: document.getElementById('btn-lyrics-next'),
+            lyricsLikeBtn: document.getElementById('btn-lyrics-like'),
+            lyricsMoreBtn: document.getElementById('btn-lyrics-more'),
+            lyricsMoreSheet: document.getElementById('lyrics-more-sheet'),
+            lyricsMoreBackdrop: document.getElementById('lyrics-more-backdrop'),
+            lyricsMoreClose: document.getElementById('btn-lyrics-more-close'),
+            lyricsProgressContainer: document.getElementById('lyrics-progress-container'),
+            lyricsProgressFill: document.getElementById('lyrics-progress-fill'),
+            lyricsTimeCurrent: document.getElementById('lyrics-time-current'),
+            lyricsTimeDuration: document.getElementById('lyrics-time-duration'),
+            lyricsArtImg: document.getElementById('lyrics-art-img'),
+            lyricsArtFrame: document.getElementById('lyrics-art-frame'),
         };
     },
 
@@ -261,6 +359,71 @@ const Player = {
             }
         });
 
+        // Mobile Lyrics Controls Event Bindings
+        this.elements.lyricsPlayBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.togglePlay();
+        });
+        this.elements.lyricsPrevBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.previous();
+        });
+        this.elements.lyricsNextBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.next();
+        });
+        this.elements.lyricsLikeBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleLike();
+        });
+        this.elements.lyricsMoreBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleLyricsMoreSheet(true);
+        });
+        this.elements.lyricsMoreBackdrop?.addEventListener('click', () => {
+            this.toggleLyricsMoreSheet(false);
+        });
+        this.elements.lyricsMoreClose?.addEventListener('click', () => {
+            this.toggleLyricsMoreSheet(false);
+        });
+        this.elements.lyricsProgressContainer?.addEventListener('click', (e) => {
+            const rect = this.elements.lyricsProgressContainer.getBoundingClientRect();
+            const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            this.seekTo(percent);
+        });
+
+        // More Sheet Items Actions
+        document.getElementById('lyrics-sheet-download')?.addEventListener('click', () => {
+            if (this.currentTrack) {
+                downloadSong(
+                    this.currentTrack.video_id,
+                    this.currentTrack.track_name || this.currentTrack.title,
+                    this.currentTrack.artist
+                );
+            }
+            this.toggleLyricsMoreSheet(false);
+        });
+        document.getElementById('lyrics-sheet-queue')?.addEventListener('click', () => {
+            this.toggleLyricsMoreSheet(false);
+            document.getElementById('lyrics-overlay')?.classList.add('hidden');
+            navigateTo('queue');
+        });
+        document.getElementById('lyrics-sheet-shuffle')?.addEventListener('click', () => {
+            this.toggleShuffle();
+            this.updateMoreSheetToggles();
+        });
+        document.getElementById('lyrics-sheet-repeat')?.addEventListener('click', () => {
+            this.toggleRepeat();
+            this.updateMoreSheetToggles();
+        });
+        document.getElementById('lyrics-sheet-artist')?.addEventListener('click', () => {
+            if (this.currentTrack?.artist && typeof openArtistPage === 'function') {
+                this.toggleLyricsMoreSheet(false);
+                document.getElementById('lyrics-overlay')?.classList.add('hidden');
+                openArtistPage(this.currentTrack.artist);
+            }
+        });
+
         // Clicking on the currently playing track info opens the lyrics & now-playing view
         this.elements.trackInfo?.addEventListener('click', (e) => {
             if (e.target.closest('#player-artist')) {
@@ -283,6 +446,7 @@ const Player = {
 
         document.getElementById('btn-lyrics-close')?.addEventListener('click', () => {
             document.getElementById('lyrics-overlay')?.classList.add('hidden');
+            this.toggleLyricsMoreSheet(false);
         });
 
         // Volume
@@ -309,14 +473,43 @@ const Player = {
         });
     },
 
+    toggleLyricsMoreSheet(show) {
+        const sheet = document.getElementById('lyrics-more-sheet');
+        if (!sheet) return;
+        if (show) {
+            sheet.classList.remove('hidden');
+            this.updateMoreSheetToggles();
+        } else {
+            sheet.classList.add('hidden');
+        }
+    },
+
+    updateMoreSheetToggles() {
+        const shuffleText = document.getElementById('lyrics-sheet-shuffle-text');
+        const repeatText = document.getElementById('lyrics-sheet-repeat-text');
+        if (shuffleText) {
+            shuffleText.textContent = `Shuffle: ${this.shuffleEnabled ? 'On' : 'Off'}`;
+        }
+        if (repeatText) {
+            const repeatLabels = { off: 'Off', all: 'All', one: 'One' };
+            repeatText.textContent = `Repeat: ${repeatLabels[this.repeatMode] || 'Off'}`;
+        }
+    },
+
     toggleLyrics() {
         const overlay = document.getElementById('lyrics-overlay');
         if (!overlay) return;
 
         overlay.classList.toggle('hidden');
-        if (!overlay.classList.contains('hidden') && this.currentTrack) {
-            if (typeof Lyrics !== 'undefined') {
-                Lyrics.loadLyrics(this.currentTrack);
+        if (!overlay.classList.contains('hidden')) {
+            if (this.currentTrack) {
+                if (typeof Lyrics !== 'undefined') {
+                    Lyrics.loadLyrics(this.currentTrack);
+                }
+                this.updateTrackUI(this.currentTrack);
+            }
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
             }
         }
     },
@@ -336,6 +529,8 @@ const Player = {
 
     async play(track) {
         if (!track || !track.video_id) return;
+
+        this.initBackgroundAudioSession();
 
         const prevTrackId = this.currentTrack?.video_id;
         this.currentTrack = track;
@@ -506,6 +701,8 @@ const Player = {
     renderLangSwitcher(versions, currentLanguage, currentTrack) {
         const playerBar = document.getElementById('player-lang-switcher');
         const lyricsBar = document.getElementById('lyrics-lang-switcher');
+        const sheetBar = document.getElementById('lyrics-sheet-lang-switcher');
+        const sheetSection = document.getElementById('lyrics-sheet-lang-section');
 
         // Only show if at least 2 language options exist
         if (!versions || versions.length < 2) {
@@ -516,6 +713,12 @@ const Player = {
             if (lyricsBar) {
                 lyricsBar.classList.add('hidden');
                 lyricsBar.innerHTML = '';
+            }
+            if (sheetSection) {
+                sheetSection.classList.add('hidden');
+            }
+            if (sheetBar) {
+                sheetBar.innerHTML = '';
             }
             return;
         }
@@ -547,6 +750,12 @@ const Player = {
         if (lyricsBar) {
             lyricsBar.innerHTML = html;
             lyricsBar.classList.remove('hidden');
+        }
+        if (sheetBar) {
+            sheetBar.innerHTML = html;
+        }
+        if (sheetSection) {
+            sheetSection.classList.remove('hidden');
         }
     },
 
@@ -1031,6 +1240,11 @@ const Player = {
         if (typeof Library !== 'undefined') {
             Library.updateLikeUI(videoId, isLiked);
         }
+        if (this.elements.lyricsLikeBtn) {
+            this.elements.lyricsLikeBtn.classList.toggle('active', isLiked);
+            this.elements.lyricsLikeBtn.innerHTML = `<i data-lucide="heart" ${isLiked ? 'style="fill: currentColor;"' : ''}></i>`;
+            lucide.createIcons({ nodes: [this.elements.lyricsLikeBtn] });
+        }
     },
 
     // ============================================
@@ -1045,13 +1259,30 @@ const Player = {
         if (this.elements.progressFill) {
             this.elements.progressFill.style.width = `${percent}%`;
         }
+        if (this.elements.lyricsProgressFill) {
+            this.elements.lyricsProgressFill.style.width = `${percent}%`;
+        }
 
         if (this.elements.timeCurrent) {
             this.elements.timeCurrent.textContent = formatDuration(this.audio.currentTime);
         }
+        if (this.elements.lyricsTimeCurrent) {
+            this.elements.lyricsTimeCurrent.textContent = formatDuration(this.audio.currentTime);
+        }
 
         if (typeof Lyrics !== 'undefined') {
             Lyrics.syncToTime(this.audio.currentTime);
+        }
+
+        // Keep lock screen scrubber in sync with real-time playback
+        if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && !isNaN(this.audio.duration)) {
+            try {
+                navigator.mediaSession.setPositionState({
+                    duration: this.audio.duration,
+                    playbackRate: this.audio.playbackRate || 1.0,
+                    position: Math.min(this.audio.currentTime, this.audio.duration),
+                });
+            } catch (e) {}
         }
     },
 
@@ -1062,13 +1293,22 @@ const Player = {
         if (this.elements.progressFill) {
             this.elements.progressFill.style.width = `${percent}%`;
         }
+        if (this.elements.lyricsProgressFill) {
+            this.elements.lyricsProgressFill.style.width = `${percent}%`;
+        }
 
         if (this.elements.timeCurrent) {
             this.elements.timeCurrent.textContent = formatDuration(currentTime);
         }
+        if (this.elements.lyricsTimeCurrent) {
+            this.elements.lyricsTimeCurrent.textContent = formatDuration(currentTime);
+        }
 
         if (this.elements.timeDuration) {
             this.elements.timeDuration.textContent = formatDuration(duration);
+        }
+        if (this.elements.lyricsTimeDuration) {
+            this.elements.lyricsTimeDuration.textContent = formatDuration(duration);
         }
 
         if (typeof Lyrics !== 'undefined') {
@@ -1079,6 +1319,9 @@ const Player = {
     onLoaded() {
         if (this.elements.timeDuration) {
             this.elements.timeDuration.textContent = formatDuration(this.audio.duration);
+        }
+        if (this.elements.lyricsTimeDuration) {
+            this.elements.lyricsTimeDuration.textContent = formatDuration(this.audio.duration);
         }
     },
 
@@ -1099,11 +1342,32 @@ const Player = {
     onPlayState(playing) {
         this.isPlaying = playing;
 
+        // Keep background audio context active
+        if (playing) {
+            if (this.audioCtx && this.audioCtx.state === 'suspended') {
+                this.audioCtx.resume().catch(() => {});
+            }
+            this.requestWakeLock();
+        } else {
+            this.releaseWakeLock();
+        }
+
+        // Update OS Media Session Playback State (enables lock screen media controls)
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
+        }
+
         // Clean, reliable Play/Pause button icon change
         const btn = this.elements.playBtn;
         if (btn) {
             btn.innerHTML = `<i data-lucide="${playing ? 'pause' : 'play'}"></i>`;
             lucide.createIcons({ nodes: [btn] });
+        }
+
+        const lyricsPlayBtn = this.elements.lyricsPlayBtn;
+        if (lyricsPlayBtn) {
+            lyricsPlayBtn.innerHTML = `<i data-lucide="${playing ? 'pause' : 'play'}"></i>`;
+            lucide.createIcons({ nodes: [lyricsPlayBtn] });
         }
 
         // Show/hide animated waveform equalizer bars
@@ -1118,7 +1382,7 @@ const Player = {
     },
 
     onError(e) {
-        console.warn('Native audio stream error on cloud host:', e);
+        console.warn('Native audio stream error on host:', e);
         if (this.currentTrack && !this.currentTrack.isLocal && this.currentTrack.video_id && !this.currentTrack.video_id.startsWith('ext_') && this.activeEngine !== 'yt') {
             console.info('Switching to YouTube Audio Engine for seamless playback...');
             this.playViaYTBridge(this.currentTrack);
@@ -1161,10 +1425,24 @@ const Player = {
             this.elements.artContainer?.classList.remove('has-art');
         }
 
+        if (this.elements.lyricsArtImg) {
+            if (art) {
+                this.elements.lyricsArtImg.src = art;
+                this.elements.lyricsArtFrame?.classList.add('has-art');
+            } else {
+                this.elements.lyricsArtImg.src = '';
+                this.elements.lyricsArtFrame?.classList.remove('has-art');
+            }
+        }
+
         if (this.elements.progressFill) this.elements.progressFill.style.width = '0%';
+        if (this.elements.lyricsProgressFill) this.elements.lyricsProgressFill.style.width = '0%';
         if (this.elements.timeCurrent) this.elements.timeCurrent.textContent = '0:00';
-        if (this.elements.timeDuration && track.duration) {
-            this.elements.timeDuration.textContent = formatDuration(track.duration);
+        if (this.elements.lyricsTimeCurrent) this.elements.lyricsTimeCurrent.textContent = '0:00';
+        if (track.duration) {
+            const formatted = formatDuration(track.duration);
+            if (this.elements.timeDuration) this.elements.timeDuration.textContent = formatted;
+            if (this.elements.lyricsTimeDuration) this.elements.lyricsTimeDuration.textContent = formatted;
         }
 
         document.title = `▶ ${name} — ${sub} | Wave`;
@@ -1178,7 +1456,7 @@ const Player = {
     },
 
     // ============================================
-    // Media Session API
+    // Media Session API (Background / Lock Screen)
     // ============================================
 
     setupMediaSession() {
@@ -1192,26 +1470,49 @@ const Player = {
                     if (this.activeEngine === 'yt') {
                         YTBridge.seekTo(details.seekTime);
                     } else {
-                        this.audio.currentTime = details.seekTime;
+                        this.seekToSeconds(details.seekTime);
                     }
                 }
+            });
+            navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+                this.seekRelative(-(details.seekOffset || 10));
+            });
+            navigator.mediaSession.setActionHandler('seekforward', (details) => {
+                this.seekRelative(details.seekOffset || 10);
+            });
+            navigator.mediaSession.setActionHandler('stop', () => {
+                if (this.activeEngine === 'yt') {
+                    YTBridge.pause();
+                } else {
+                    this.audio.pause();
+                }
+                this.onPlayState(false);
             });
         }
     },
 
     updateMediaSession(track) {
         if ('mediaSession' in navigator) {
+            const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : null;
+            const title = (meta?.title) || track.track_name || track.title || 'Unknown';
+            const artist = (meta?.artist) || track.artist || 'Unknown Artist';
+            const album = (meta?.movie) || track.movie || 'Wave Music';
+            const artUrl = track.thumbnail || track.album_art || '/static/icons/icon-512.png';
+
             navigator.mediaSession.metadata = new MediaMetadata({
-                title: track.track_name || track.title || 'Unknown',
-                artist: track.artist || 'Unknown Artist',
+                title: title,
+                artist: artist,
+                album: album,
                 artwork: [
-                    {
-                        src: track.thumbnail || track.album_art || '',
-                        sizes: '512x512',
-                        type: 'image/jpeg',
-                    },
+                    { src: artUrl, sizes: '96x96', type: 'image/jpeg' },
+                    { src: artUrl, sizes: '128x128', type: 'image/jpeg' },
+                    { src: artUrl, sizes: '192x192', type: 'image/png' },
+                    { src: artUrl, sizes: '256x256', type: 'image/jpeg' },
+                    { src: artUrl, sizes: '384x384', type: 'image/jpeg' },
+                    { src: artUrl, sizes: '512x512', type: 'image/png' },
                 ],
             });
+            navigator.mediaSession.playbackState = this.isPlaying ? 'playing' : 'paused';
         }
     },
 };

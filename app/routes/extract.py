@@ -89,13 +89,16 @@ async def clear_history_endpoint(
 DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 
-@router.get("/stream/{extraction_id}", summary="Stream extracted audio")
+from fastapi.responses import StreamingResponse, Response
+
+
+@router.api_route("/stream/{extraction_id}", methods=["GET", "HEAD"], summary="Stream extracted audio")
 async def stream_extracted_audio(
     extraction_id: str,
     request: Request,
 ):
     """
-    Proxy stream extracted audio using cached direct stream URL with Range support.
+    Proxy stream extracted audio using cached direct stream URL with Range and HEAD support.
     """
     db = database.db
     if db is None:
@@ -115,6 +118,8 @@ async def stream_extracted_audio(
     range_header = request.headers.get("range")
     if range_header:
         headers["Range"] = range_header
+    elif request.method == "HEAD":
+        headers["Range"] = "bytes=0-1"
 
     try:
         client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
@@ -129,6 +134,11 @@ async def stream_extracted_audio(
             raise HTTPException(status_code=response.status_code, detail="Extracted stream source error")
 
         content_type = response.headers.get("content-type", "audio/mp4")
+        if content_type.startswith("video/"):
+            content_type = content_type.replace("video/", "audio/")
+        elif not content_type.startswith("audio/"):
+            content_type = "audio/mp4"
+
         response_headers = {
             "Accept-Ranges": "bytes",
             "Cache-Control": "no-cache",
@@ -137,6 +147,15 @@ async def stream_extracted_audio(
             response_headers["Content-Length"] = response.headers["content-length"]
         if "content-range" in response.headers:
             response_headers["Content-Range"] = response.headers["content-range"]
+
+        if request.method == "HEAD":
+            await response.aclose()
+            await client.aclose()
+            return Response(
+                status_code=200 if not range_header else 206,
+                headers=response_headers,
+                media_type=content_type,
+            )
 
         async def stream_generator():
             try:

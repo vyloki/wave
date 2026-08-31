@@ -24,9 +24,9 @@
     <link rel="icon" type="image/png" href="/static/icons/icon-192.png">
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/static/css/index.css?v=2.8">
-    <link rel="stylesheet" href="/static/css/player.css?v=2.8">
-    <link rel="stylesheet" href="/static/css/animations.css?v=2.8">
+    <link rel="stylesheet" href="/static/css/index.css?v=3.0">
+    <link rel="stylesheet" href="/static/css/player.css?v=3.0">
+    <link rel="stylesheet" href="/static/css/animations.css?v=3.0">
 </head>
 <body>
     <!-- ============================== -->
@@ -735,6 +735,9 @@
     <!--      LYRICS OVERLAY            -->
     <!-- ============================== -->
     <div id="lyrics-overlay" class="lyrics-overlay hidden">
+        <!-- Ambient Spotlight Glow for Mobile Visual Experience -->
+        <div class="lyrics-spotlight-backdrop" id="lyrics-spotlight-backdrop"></div>
+
         <div class="lyrics-header">
             <button class="btn-icon btn-lyrics-close" id="btn-lyrics-close" title="Close Lyrics">
                 <i data-lucide="chevron-down"></i>
@@ -747,7 +750,21 @@
                 <span class="badge" id="lyrics-badge">Lyrics</span>
             </div>
         </div>
-        <!-- Sub-bar containing Language Switcher + Real-time Sync Calibration -->
+
+        <!-- Mobile-Exclusive Spotlight Artwork Hero Section -->
+        <div class="lyrics-mobile-hero" id="lyrics-mobile-hero">
+            <div class="lyrics-art-wrapper" id="lyrics-art-wrapper">
+                <div class="lyrics-art-glow" id="lyrics-art-glow"></div>
+                <div class="lyrics-art-frame" id="lyrics-art-frame">
+                    <img id="lyrics-art-img" src="" alt="Album Artwork">
+                    <div class="lyrics-art-placeholder" id="lyrics-art-placeholder">
+                        <i data-lucide="music"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sub-bar containing Language Switcher + Real-time Sync Calibration (Desktop / Fallback) -->
         <div class="lyrics-toolbar" id="lyrics-toolbar">
             <div class="lyrics-lang-bar hidden" id="lyrics-lang-switcher"></div>
             <div class="lyrics-sync-controls hidden" id="lyrics-sync-controls" title="Calibrate lyrics sync timing">
@@ -758,6 +775,8 @@
                 <button class="btn-sync-reset" id="btn-sync-reset" onclick="Lyrics.resetOffset()" title="Reset timing">Reset</button>
             </div>
         </div>
+
+        <!-- Lyrics Body Container (Scrollable lines with spotlight highlight) -->
         <div class="lyrics-body" id="lyrics-body">
             <div class="lyrics-loading hidden" id="lyrics-loading">
                 <div class="loader">
@@ -771,6 +790,101 @@
                 <p class="lyrics-placeholder">Play a song to view lyrics</p>
             </div>
         </div>
+
+        <!-- Mobile-Exclusive Embedded Controls (Below Artwork & Lyrics) -->
+        <div class="lyrics-mobile-controls" id="lyrics-mobile-controls">
+            <!-- Progress Bar / Scrubber -->
+            <div class="lyrics-progress-section">
+                <div class="lyrics-progress-container" id="lyrics-progress-container">
+                    <div class="lyrics-progress-bar" id="lyrics-progress-bar">
+                        <div class="lyrics-progress-fill" id="lyrics-progress-fill"></div>
+                        <div class="lyrics-progress-thumb" id="lyrics-progress-thumb"></div>
+                    </div>
+                </div>
+                <div class="lyrics-time-display">
+                    <span id="lyrics-time-current">0:00</span>
+                    <span id="lyrics-time-duration">0:00</span>
+                </div>
+            </div>
+
+            <!-- Main Playback Actions Row -->
+            <div class="lyrics-controls-row">
+                <button class="btn-icon btn-lyrics-action" id="btn-lyrics-like" title="Like">
+                    <i data-lucide="heart" id="icon-lyrics-like"></i>
+                </button>
+                <button class="btn-icon btn-lyrics-action" id="btn-lyrics-prev" title="Previous / Backward">
+                    <i data-lucide="skip-back"></i>
+                </button>
+                <button class="btn-icon btn-lyrics-play" id="btn-lyrics-play" title="Play / Pause">
+                    <i data-lucide="play" id="icon-lyrics-play"></i>
+                </button>
+                <button class="btn-icon btn-lyrics-action" id="btn-lyrics-next" title="Next / Forward">
+                    <i data-lucide="skip-forward"></i>
+                </button>
+                <button class="btn-icon btn-lyrics-action btn-lyrics-more" id="btn-lyrics-more" title="More Options">
+                    <i data-lucide="more-horizontal"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================== -->
+    <!--  LYRICS MORE OPTIONS SHEET     -->
+    <!-- ============================== -->
+    <div id="lyrics-more-sheet" class="lyrics-more-sheet hidden">
+        <div class="lyrics-more-backdrop" id="lyrics-more-backdrop"></div>
+        <div class="lyrics-more-card">
+            <div class="lyrics-more-handle"></div>
+            <div class="lyrics-more-header">
+                <span class="lyrics-more-title">Song Options</span>
+                <button class="btn-icon btn-more-close" id="btn-lyrics-more-close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+
+            <div class="lyrics-more-body">
+                <!-- Sync Calibration Section -->
+                <div class="lyrics-sheet-section">
+                    <span class="lyrics-sheet-label"><i data-lucide="sliders"></i> Lyrics Timing Sync</span>
+                    <div class="lyrics-sheet-sync-controls">
+                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(-0.5)" title="Lyrics moving too slow (-0.5s)">-0.5s</button>
+                        <span class="sync-value" id="lyrics-sheet-sync-val">0.0s</span>
+                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(0.5)" title="Lyrics moving too fast (+0.5s)">+0.5s</button>
+                        <button class="btn-sync-reset" onclick="Lyrics.resetOffset()" title="Reset timing">Reset</button>
+                    </div>
+                </div>
+
+                <!-- Language Versions Switcher Section -->
+                <div class="lyrics-sheet-section hidden" id="lyrics-sheet-lang-section">
+                    <span class="lyrics-sheet-label"><i data-lucide="languages"></i> Available Languages</span>
+                    <div class="lyrics-sheet-lang-pills" id="lyrics-sheet-lang-switcher"></div>
+                </div>
+
+                <!-- Action Items List -->
+                <div class="lyrics-sheet-actions">
+                    <button class="lyrics-sheet-item" id="lyrics-sheet-download">
+                        <i data-lucide="download"></i>
+                        <span>Download Song</span>
+                    </button>
+                    <button class="lyrics-sheet-item" id="lyrics-sheet-queue">
+                        <i data-lucide="list-music"></i>
+                        <span>View Queue / Up Next</span>
+                    </button>
+                    <button class="lyrics-sheet-item" id="lyrics-sheet-shuffle">
+                        <i data-lucide="shuffle"></i>
+                        <span id="lyrics-sheet-shuffle-text">Shuffle: Off</span>
+                    </button>
+                    <button class="lyrics-sheet-item" id="lyrics-sheet-repeat">
+                        <i data-lucide="repeat"></i>
+                        <span id="lyrics-sheet-repeat-text">Repeat: Off</span>
+                    </button>
+                    <button class="lyrics-sheet-item" id="lyrics-sheet-artist">
+                        <i data-lucide="user"></i>
+                        <span>Go to Artist Profile</span>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Toast Notifications -->
@@ -780,14 +894,14 @@
     <canvas id="visualizer-canvas" class="visualizer-canvas"></canvas>
 
     <!-- Scripts -->
-    <script src="/static/js/app.js?v=2.8"></script>
-    <script src="/static/js/auth.js?v=2.8"></script>
-    <script src="/static/js/player.js?v=2.8"></script>
-    <script src="/static/js/library.js?v=2.8"></script>
-    <script src="/static/js/extract.js?v=2.8"></script>
-    <script src="/static/js/lyrics.js?v=2.8"></script>
-    <script src="/static/js/local_import.js?v=2.8"></script>
-    <script src="/static/js/visualizer.js?v=2.8"></script>
+    <script src="/static/js/app.js?v=3.0"></script>
+    <script src="/static/js/auth.js?v=3.0"></script>
+    <script src="/static/js/player.js?v=3.0"></script>
+    <script src="/static/js/library.js?v=3.0"></script>
+    <script src="/static/js/extract.js?v=3.0"></script>
+    <script src="/static/js/lyrics.js?v=3.0"></script>
+    <script src="/static/js/local_import.js?v=3.0"></script>
+    <script src="/static/js/visualizer.js?v=3.0"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -795,7 +909,7 @@
 
             // Register Service Worker for PWA
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/static/sw.js').catch((err) => {
+                navigator.serviceWorker.register('/static/sw.js?v=4.0').catch((err) => {
                     console.debug('ServiceWorker registration skipped:', err);
                 });
             }

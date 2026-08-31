@@ -3,7 +3,7 @@
  * Caches static UI assets for instant app loading and offline capability.
  */
 
-const CACHE_NAME = 'wave-v1';
+const CACHE_NAME = 'wave-v4';
 const STATIC_ASSETS = [
     '/',
     '/static/manifest.json',
@@ -44,11 +44,28 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-    // Only cache GET requests to static assets (never cache API streams or lyrics)
+    // Only cache GET requests (never cache API streams or lyrics)
     if (e.request.method !== 'GET' || e.request.url.includes('/api/')) {
         return;
     }
 
+    // Network-first for HTML document navigation
+    if (e.request.mode === 'navigate' || e.request.destination === 'document') {
+        e.respondWith(
+            fetch(e.request)
+                .then((response) => {
+                    if (response && response.status === 200) {
+                        const clone = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+                    }
+                    return response;
+                })
+                .catch(() => caches.match(e.request).then((cached) => cached || caches.match('/')))
+        );
+        return;
+    }
+
+    // Cache-first for static assets
     e.respondWith(
         caches.match(e.request).then((cached) => {
             return cached || fetch(e.request).then((response) => {

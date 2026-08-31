@@ -19,9 +19,22 @@ const Lyrics = {
         const badgeEl = document.getElementById('lyrics-badge');
         const syncControls = document.getElementById('lyrics-sync-controls');
 
-        // Update header
+        // Update header & artwork
         document.getElementById('lyrics-track-name').textContent = track.track_name || track.title || 'Unknown';
         document.getElementById('lyrics-artist').textContent = track.artist || 'Unknown Artist';
+
+        const artImg = document.getElementById('lyrics-art-img');
+        const artFrame = document.getElementById('lyrics-art-frame');
+        const art = track.thumbnail || track.album_art || '';
+        if (artImg) {
+            if (art) {
+                artImg.src = art;
+                artFrame?.classList.add('has-art');
+            } else {
+                artImg.src = '';
+                artFrame?.classList.remove('has-art');
+            }
+        }
 
         this.currentTrackId = track.video_id;
         this.syncedLines = [];
@@ -117,10 +130,11 @@ const Lyrics = {
 
     updateOffsetUI() {
         const valEl = document.getElementById('sync-offset-val');
-        if (valEl) {
-            const prefix = this.syncOffset > 0 ? '+' : '';
-            valEl.textContent = `${prefix}${this.syncOffset.toFixed(1)}s`;
-        }
+        const sheetValEl = document.getElementById('lyrics-sheet-sync-val');
+        const prefix = this.syncOffset > 0 ? '+' : '';
+        const txt = `${prefix}${this.syncOffset.toFixed(1)}s`;
+        if (valEl) valEl.textContent = txt;
+        if (sheetValEl) sheetValEl.textContent = txt;
     },
 
     syncToTime(currentTime) {

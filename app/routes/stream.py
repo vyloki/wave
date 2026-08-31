@@ -4,7 +4,7 @@ Audio streaming endpoints that proxy YouTube audio through our backend.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.responses import StreamingResponse, RedirectResponse, Response
 from app.services.stream_service import get_cached_stream_url
 from app.services.youtube_service import get_stream_url
 from app.utils.security import get_optional_user
@@ -19,8 +19,9 @@ router = APIRouter(prefix="/api/stream", tags=["Streaming"])
 DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 
-@router.get(
+@router.api_route(
     "/{video_id}",
+    methods=["GET", "HEAD"],
     summary="Stream audio for a video"
 )
 async def stream_audio(
@@ -29,7 +30,7 @@ async def stream_audio(
     user: dict = Depends(get_optional_user),
 ):
     """
-    Stream audio from YouTube through our server with seeking and auto-token recovery.
+    Stream audio from YouTube through our server with seeking, HEAD probing, and auto-token recovery.
     """
     # Get the stream URL (cached or fresh)
     stream_url = await get_cached_stream_url(video_id)
@@ -48,6 +49,8 @@ async def stream_audio(
     range_header = request.headers.get("range")
     if range_header:
         headers["Range"] = range_header
+    elif request.method == "HEAD":
+        headers["Range"] = "bytes=0-1"
 
     try:
         client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
@@ -82,10 +85,14 @@ async def stream_audio(
                 detail="Upstream streaming error"
             )
 
-        # Determine content type
+        # Determine content type - ensure audio mime-type for mobile background playback
         content_type = response.headers.get(
             "content-type", "audio/mp4"
         )
+        if content_type.startswith("video/"):
+            content_type = content_type.replace("video/", "audio/")
+        elif not content_type.startswith("audio/"):
+            content_type = "audio/mp4"
 
         # Build response headers
         response_headers = {
@@ -102,6 +109,16 @@ async def stream_audio(
             response_headers["Content-Range"] = response.headers[
                 "content-range"
             ]
+
+        # Handle HEAD requests (used by mobile Safari/Android for buffer capability probing)
+        if request.method == "HEAD":
+            await response.aclose()
+            await client.aclose()
+            return Response(
+                status_code=200 if not range_header else 206,
+                headers=response_headers,
+                media_type=content_type,
+            )
 
         async def stream_generator():
             """Yield audio data in chunks."""
@@ -123,6 +140,8 @@ async def stream_audio(
             headers=response_headers,
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Stream error for {video_id}: {e}")
         raise HTTPException(

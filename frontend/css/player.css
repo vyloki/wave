@@ -68,11 +68,14 @@
 /* --- Player Inner Layout --- */
 .player-inner {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr);
     align-items: center;
     padding: var(--space-sm) var(--space-xl);
     height: 100%;
-    gap: var(--space-lg);
+    gap: var(--space-md);
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 /* --- Track Info (Left - Clickable to Open Lyrics) --- */
@@ -82,12 +85,14 @@
     align-items: center;
     gap: var(--space-sm);
     min-width: 0;
+    max-width: 100%;
     cursor: pointer;
     padding: 4px 8px;
     border-radius: var(--radius-md);
     transition: background var(--transition-fast);
     flex-wrap: nowrap;
     white-space: nowrap;
+    overflow: hidden;
 }
 
 .player-track-info:hover {
@@ -97,6 +102,7 @@
 .player-art {
     width: 52px;
     height: 52px;
+    min-width: 52px;
     border-radius: var(--radius-md);
     background: var(--bg-secondary);
     border: 1px solid var(--border-subtle);
@@ -143,27 +149,31 @@
 }
 
 .player-track-text {
-    min-width: 0;
+    min-width: 80px;
     display: flex;
     flex-direction: column;
     gap: 2px;
-    flex-shrink: 1;
+    flex: 1;
+    overflow: hidden;
 }
 
 .player-track-name-row {
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .player-track-name {
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 220px;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .player-artist {
@@ -172,12 +182,14 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 220px;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .btn-like {
     color: var(--text-tertiary);
     flex-shrink: 0;
+    min-width: 32px;
 }
 
 .btn-like.liked {
@@ -194,14 +206,21 @@
     flex-direction: row;
     align-items: center;
     gap: 3px;
-    margin-left: 8px;
-    padding: 3px 5px;
+    margin-left: 4px;
+    padding: 2px 4px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-full);
+    max-width: 160px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     flex-shrink: 0;
-    flex-wrap: nowrap;
     white-space: nowrap;
+}
+
+.lang-switcher-bar::-webkit-scrollbar {
+    display: none;
 }
 
 .lang-switcher-bar.hidden {
@@ -209,7 +228,7 @@
 }
 
 .lang-pill {
-    padding: 3px 10px;
+    padding: 3px 9px;
     border-radius: var(--radius-full);
     border: 1px solid transparent;
     background: transparent;
@@ -222,6 +241,7 @@
     white-space: nowrap;
     line-height: 1.3;
     user-select: none;
+    flex-shrink: 0;
 }
 
 .lang-pill:hover {
@@ -245,6 +265,7 @@
     align-items: center;
     justify-content: center;
     gap: var(--space-sm);
+    flex-shrink: 0;
 }
 
 .btn-play {
@@ -513,6 +534,33 @@
     color: var(--text-inverse) !important;
     border-color: transparent;
     box-shadow: var(--shadow-sm);
+}
+
+/* =================================================== */
+/* 💻 LAPTOP / TABLET RESPONSIVE PLAYER (769px - 1150px)*/
+/* =================================================== */
+@media (max-width: 1150px) and (min-width: 769px) {
+    .player-inner {
+        padding: var(--space-xs) var(--space-md);
+        gap: var(--space-sm);
+        grid-template-columns: minmax(180px, 1fr) auto minmax(160px, 1fr);
+    }
+
+    .lang-switcher-bar {
+        max-width: 120px;
+    }
+
+    .player-track-name {
+        max-width: 140px;
+    }
+
+    .player-artist {
+        max-width: 140px;
+    }
+
+    .time-display {
+        display: none;
+    }
 }
 
 /* =================================================== */

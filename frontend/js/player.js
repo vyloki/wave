@@ -505,12 +505,18 @@ const Player = {
 
     renderLangSwitcher(versions, currentLanguage, currentTrack) {
         const playerBar = document.getElementById('player-lang-switcher');
-        if (!playerBar) return;
+        const lyricsBar = document.getElementById('lyrics-lang-switcher');
 
         // Only show if at least 2 language options exist
         if (!versions || versions.length < 2) {
-            playerBar.classList.add('hidden');
-            playerBar.innerHTML = '';
+            if (playerBar) {
+                playerBar.classList.add('hidden');
+                playerBar.innerHTML = '';
+            }
+            if (lyricsBar) {
+                lyricsBar.classList.add('hidden');
+                lyricsBar.innerHTML = '';
+            }
             return;
         }
 
@@ -534,8 +540,14 @@ const Player = {
                             title="Play in ${v.language}">${v.language}</button>`;
         }).join('');
 
-        playerBar.innerHTML = html;
-        playerBar.classList.remove('hidden');
+        if (playerBar) {
+            playerBar.innerHTML = html;
+            playerBar.classList.remove('hidden');
+        }
+        if (lyricsBar) {
+            lyricsBar.innerHTML = html;
+            lyricsBar.classList.remove('hidden');
+        }
     },
 
     async switchToLanguage(language, encodedTrack) {
@@ -548,8 +560,8 @@ const Player = {
                 return;
             }
 
-            // Immediately mark active pill in player bar
-            document.querySelectorAll('#player-lang-switcher .lang-pill').forEach(btn => {
+            // Immediately mark active pill across all switchers
+            document.querySelectorAll('.lang-pill').forEach(btn => {
                 if (btn.textContent.trim().toLowerCase() === language.toLowerCase()) {
                     btn.classList.add('active');
                 } else {

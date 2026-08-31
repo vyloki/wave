@@ -536,6 +536,74 @@
     box-shadow: var(--shadow-sm);
 }
 
+/* --- Lyrics Sync Offset Calibration Controls --- */
+.lyrics-sync-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-full);
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.lyrics-sync-controls.hidden {
+    display: none !important;
+}
+
+.sync-label {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-right: 2px;
+}
+
+.sync-value {
+    color: var(--accent-dark);
+    font-family: var(--font-heading);
+    font-weight: 700;
+    min-width: 32px;
+    text-align: center;
+    font-size: 11px;
+}
+
+.btn-sync-offset {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-sync-offset:hover {
+    background: var(--accent-dark);
+    color: #ffffff;
+    border-color: var(--accent-dark);
+}
+
+.btn-sync-reset {
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color var(--transition-fast);
+}
+
+.btn-sync-reset:hover {
+    color: var(--text-primary);
+    text-decoration: underline;
+}
+
 /* =================================================== */
 /* 💻 LAPTOP / TABLET RESPONSIVE PLAYER (769px - 1150px)*/
 /* =================================================== */

@@ -692,6 +692,16 @@ const Player = {
         }
     },
 
+    seekToSeconds(seconds) {
+        if (this.activeEngine === 'yt') {
+            YTBridge.seekTo(seconds);
+            return;
+        }
+        if (this.audio) {
+            this.audio.currentTime = seconds;
+        }
+    },
+
     seekRelative(seconds) {
         if (this.activeEngine === 'yt') {
             const cur = YTBridge.player?.getCurrentTime ? YTBridge.player.getCurrentTime() : 0;

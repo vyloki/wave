@@ -151,11 +151,11 @@ async def get_lyrics(
 ) -> Optional[dict]:
     """
     Fetch lyrics from LRCLIB using smart multi-tier query fallback.
-    Language-aware: prefers results matching the target language.
+    Language-aware and duration-aware: prefers results matching the target language and audio duration.
     Automatically transliterates Telugu/Indic lyrics to English spelling.
     """
     queries = clean_song_titles(track_name, artist_name)
-    logger.info(f"🔍 Searching lyrics for '{track_name}' (lang={language!r}) with candidates: {queries}")
+    logger.info(f"🔍 Searching lyrics for '{track_name}' (dur={duration}s, lang={language!r}) with candidates: {queries}")
 
     try:
         async with httpx.AsyncClient(timeout=6.0) as client:
@@ -168,21 +168,37 @@ async def get_lyrics(
                 if resp.status_code == 200:
                     results = resp.json()
                     if results and isinstance(results, list) and len(results) > 0:
-                        # Score all results by language match
+                        # Score all results by language match & duration proximity
                         scored = []
                         for r in results:
                             lang_score = _score_result_for_language(r, language)
                             has_synced = bool(r.get("syncedLyrics"))
-                            scored.append((lang_score, has_synced, r))
 
-                        # Sort: highest language score first, then prefer synced
-                        scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+                            # Calculate duration proximity score
+                            dur_score = 0
+                            r_dur = float(r.get("duration") or 0)
+                            if duration > 0 and r_dur > 0:
+                                diff = abs(r_dur - float(duration))
+                                if diff <= 4:
+                                    dur_score = 25  # Exact or near-exact song length match
+                                elif diff <= 12:
+                                    dur_score = 15
+                                elif diff <= 25:
+                                    dur_score = 5
+                                elif diff > 45:
+                                    dur_score = -20 # Mismatched edit/remix
 
-                        for lang_score, has_synced, r in scored:
+                            total_score = lang_score + (25 if has_synced else 0) + dur_score
+                            scored.append((total_score, has_synced, dur_score, r))
+
+                        # Sort: highest total score first
+                        scored.sort(key=lambda x: x[0], reverse=True)
+
+                        for total_score, has_synced, dur_score, r in scored:
                             parsed = _parse_lyrics_response(r)
                             if parsed and (parsed["synced_lyrics"] or parsed["plain_lyrics"]):
                                 logger.info(
-                                    f"🎤 Lyrics found for '{q}' (score={lang_score}): "
+                                    f"🎤 Lyrics found for '{q}' (score={total_score}, dur_score={dur_score}): "
                                     f"{r.get('trackName')} by {r.get('artistName')}"
                                 )
                                 return parsed
@@ -201,6 +217,7 @@ def _parse_lyrics_response(data: dict) -> dict:
         "plain_lyrics": "",
         "track_name": data.get("trackName", ""),
         "artist_name": data.get("artistName", ""),
+        "duration": data.get("duration", 0),
     }
 
     synced_lrc = data.get("syncedLyrics", "")

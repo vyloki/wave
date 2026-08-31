@@ -24,9 +24,9 @@
     <link rel="icon" type="image/png" href="/static/icons/icon-192.png">
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/static/css/index.css?v=2.5">
-    <link rel="stylesheet" href="/static/css/player.css?v=2.5">
-    <link rel="stylesheet" href="/static/css/animations.css?v=2.5">
+    <link rel="stylesheet" href="/static/css/index.css?v=2.6">
+    <link rel="stylesheet" href="/static/css/player.css?v=2.6">
+    <link rel="stylesheet" href="/static/css/animations.css?v=2.6">
 </head>
 <body>
     <!-- ============================== -->
@@ -745,6 +745,14 @@
             </div>
             <div class="lyrics-header-actions">
                 <span class="badge" id="lyrics-badge">Lyrics</span>
+                <!-- Real-time Sync Offset Calibration Controls -->
+                <div class="lyrics-sync-controls hidden" id="lyrics-sync-controls" title="Calibrate lyrics sync timing">
+                    <span class="sync-label">Sync:</span>
+                    <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(-0.5)" title="Lyrics moving too slow / late (-0.5s)">-0.5s</button>
+                    <span class="sync-value" id="sync-offset-val">0.0s</span>
+                    <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(0.5)" title="Lyrics moving too fast / early (+0.5s)">+0.5s</button>
+                    <button class="btn-sync-reset" id="btn-sync-reset" onclick="Lyrics.resetOffset()" title="Reset timing">Reset</button>
+                </div>
             </div>
         </div>
         <!-- Language Switcher in Lyrics & Now Playing Overlay -->
@@ -771,14 +779,14 @@
     <canvas id="visualizer-canvas" class="visualizer-canvas"></canvas>
 
     <!-- Scripts -->
-    <script src="/static/js/app.js?v=2.5"></script>
-    <script src="/static/js/auth.js?v=2.5"></script>
-    <script src="/static/js/player.js?v=2.5"></script>
-    <script src="/static/js/library.js?v=2.5"></script>
-    <script src="/static/js/extract.js?v=2.5"></script>
-    <script src="/static/js/lyrics.js?v=2.5"></script>
-    <script src="/static/js/local_import.js?v=2.5"></script>
-    <script src="/static/js/visualizer.js?v=2.5"></script>
+    <script src="/static/js/app.js?v=2.6"></script>
+    <script src="/static/js/auth.js?v=2.6"></script>
+    <script src="/static/js/player.js?v=2.6"></script>
+    <script src="/static/js/library.js?v=2.6"></script>
+    <script src="/static/js/extract.js?v=2.6"></script>
+    <script src="/static/js/lyrics.js?v=2.6"></script>
+    <script src="/static/js/local_import.js?v=2.6"></script>
+    <script src="/static/js/visualizer.js?v=2.6"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {

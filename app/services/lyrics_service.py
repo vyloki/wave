@@ -278,11 +278,6 @@ async def get_lyrics(
 
     return None
 
-    except Exception as e:
-        logger.warning(f"Lyrics search error for '{track_name}': {e}")
-
-    return None
-
 
 def _parse_lyrics_response(data: dict) -> dict:
     """Parse LRCLIB response into standardized format with English transliteration."""

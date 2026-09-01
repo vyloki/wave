@@ -821,6 +821,9 @@
                 <button class="btn-icon btn-lyrics-action" id="btn-lyrics-next" title="Next / Forward">
                     <i data-lucide="skip-forward"></i>
                 </button>
+                <button class="btn-icon btn-lyrics-action" id="btn-lyrics-repeat" title="Repeat Mode">
+                    <i data-lucide="repeat" id="icon-lyrics-repeat"></i>
+                </button>
                 <button class="btn-icon btn-lyrics-action btn-lyrics-more" id="btn-lyrics-more" title="More Options">
                     <i data-lucide="more-horizontal"></i>
                 </button>
@@ -837,7 +840,7 @@
             <div class="lyrics-more-handle"></div>
             <div class="lyrics-more-header">
                 <span class="lyrics-more-title">Song Options</span>
-                <button class="btn-icon btn-more-close" id="btn-lyrics-more-close">
+                <button class="btn-icon btn-more-close" id="btn-lyrics-more-close" title="Close Options">
                     <i data-lucide="x"></i>
                 </button>
             </div>
@@ -845,12 +848,20 @@
             <div class="lyrics-more-body">
                 <!-- Sync Calibration Section -->
                 <div class="lyrics-sheet-section">
-                    <span class="lyrics-sheet-label"><i data-lucide="sliders"></i> Lyrics Timing Sync</span>
-                    <div class="lyrics-sheet-sync-controls">
-                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(-0.5)" title="Lyrics moving too slow (-0.5s)">-0.5s</button>
-                        <span class="sync-value" id="lyrics-sheet-sync-val">0.0s</span>
-                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(0.5)" title="Lyrics moving too fast (+0.5s)">+0.5s</button>
-                        <button class="btn-sync-reset" onclick="Lyrics.resetOffset()" title="Reset timing">Reset</button>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span class="lyrics-sheet-label" style="margin: 0;"><i data-lucide="sliders"></i> Lyrics Timing Sync</span>
+                        <span class="sync-value" id="lyrics-sheet-sync-val" style="font-size: 13px; font-weight: 700; color: var(--accent-dark);">0.0s</span>
+                    </div>
+                    <div class="lyrics-sheet-sync-controls" style="flex-wrap: wrap; gap: 6px;">
+                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(-2.0)" title="Delay 2 Lines (-2.0s)">-2.0s</button>
+                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(-1.0)" title="Delay 1 Line (-1.0s)">-1.0s</button>
+                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(-0.5)" title="Delay (-0.5s)">-0.5s</button>
+                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(-0.1)" title="Delay (-0.1s)">-0.1s</button>
+                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(0.1)" title="Advance (+0.1s)">+0.1s</button>
+                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(0.5)" title="Advance (+0.5s)">+0.5s</button>
+                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(1.0)" title="Advance (+1.0s)">+1.0s</button>
+                        <button class="btn-sync-offset" onclick="Lyrics.adjustOffset(2.0)" title="Advance (+2.0s)">+2.0s</button>
+                        <button class="btn-sync-reset" onclick="Lyrics.resetOffset()" title="Reset timing">Reset (0.0s)</button>
                     </div>
                 </div>
 
@@ -862,13 +873,21 @@
 
                 <!-- Action Items List -->
                 <div class="lyrics-sheet-actions">
+                    <button class="lyrics-sheet-item" id="lyrics-sheet-queue">
+                        <i data-lucide="list-music"></i>
+                        <span id="lyrics-sheet-queue-text">View Queue / Up Next</span>
+                    </button>
+                    <button class="lyrics-sheet-item" id="lyrics-sheet-add-playlist">
+                        <i data-lucide="plus-circle"></i>
+                        <span>Add to Playlist</span>
+                    </button>
+                    <button class="lyrics-sheet-item" id="lyrics-sheet-add-queue">
+                        <i data-lucide="list-plus"></i>
+                        <span>Add to Queue</span>
+                    </button>
                     <button class="lyrics-sheet-item" id="lyrics-sheet-download">
                         <i data-lucide="download"></i>
                         <span>Download Song</span>
-                    </button>
-                    <button class="lyrics-sheet-item" id="lyrics-sheet-queue">
-                        <i data-lucide="list-music"></i>
-                        <span>View Queue / Up Next</span>
                     </button>
                     <button class="lyrics-sheet-item" id="lyrics-sheet-shuffle">
                         <i data-lucide="shuffle"></i>

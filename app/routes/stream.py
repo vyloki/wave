@@ -114,8 +114,9 @@ async def stream_audio(
         if request.method == "HEAD":
             await response.aclose()
             await client.aclose()
+            head_status = 206 if "Content-Range" in response_headers else 200
             return Response(
-                status_code=200 if not range_header else 206,
+                status_code=head_status,
                 headers=response_headers,
                 media_type=content_type,
             )
@@ -131,7 +132,7 @@ async def stream_audio(
                 await response.aclose()
                 await client.aclose()
 
-        status_code = response.status_code if response.status_code in (200, 206) else (206 if range_header else 200)
+        status_code = 206 if "Content-Range" in response_headers else 200
 
         return StreamingResponse(
             stream_generator(),

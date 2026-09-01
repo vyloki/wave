@@ -159,6 +159,10 @@ function navigateTo(page, updateHash = true, extra = {}) {
         if (typeof Extract !== 'undefined') {
             Extract.loadHistory();
         }
+    } else if (page === 'queue') {
+        if (typeof Player !== 'undefined') {
+            Player.renderQueue();
+        }
     } else if (page === 'home') {
         loadHomeRecentlyPlayed();
     }
@@ -1276,18 +1280,21 @@ function renderTrackCards(tracks, containerId) {
         return;
     }
 
+    AppState.knownTracks = AppState.knownTracks || {};
+
     container.innerHTML = tracks.map((track, i) => {
         const meta = getTrackMetadata(track);
         const name = escapeHtml(meta.title);
         const sub = escapeHtml(meta.subtitle || meta.movie || meta.artist || '');
         const art = track.album_art || track.thumbnail || '';
-        const safeTrack = JSON.stringify({
+        
+        AppState.knownTracks[track.video_id] = {
             ...track,
             track_name: meta.title,
             movie: meta.movie,
             language: meta.language,
             subtitle: meta.subtitle
-        }).replace(/"/g, '&quot;');
+        };
 
         const isWaveOrUnknown = !meta.movie || meta.movie === 'Wave Music' || meta.movie === 'Unknown Artist';
         const subHtml = !isWaveOrUnknown
@@ -1295,10 +1302,10 @@ function renderTrackCards(tracks, containerId) {
             : `<div class="track-card-artist" style="cursor: default; pointer-events: none;">${sub}</div>`;
 
         return `
-            <div class="track-card" onclick="playSingleTrack('${track.video_id}', ${safeTrack})" title="${name}">
+            <div class="track-card" onclick="playSingleTrack('${track.video_id}')" title="${name}">
                 <div class="track-card-art">
                     <img src="${art}" alt="" loading="lazy" onerror="this.style.display='none'">
-                    <div class="track-card-play" onclick="event.stopPropagation(); playSingleTrack('${track.video_id}', ${safeTrack})" title="Play ${name}">
+                    <div class="track-card-play" onclick="event.stopPropagation(); playSingleTrack('${track.video_id}')" title="Play ${name}">
                         <i data-lucide="play"></i>
                     </div>
                 </div>
@@ -1322,8 +1329,9 @@ function playSingleTrack(videoId, trackData = null) {
     const allKnown = [
         ...(AppState.searchResults || []),
         ...(AppState.currentArtist?.tracks || []),
+        ...(AppState.recentlyPlayed || []),
     ];
-    let track = trackData || allKnown.find(t => t.video_id === videoId);
+    let track = trackData || AppState.knownTracks?.[videoId] || allKnown.find(t => t.video_id === videoId);
     if (!track) {
         track = {
             video_id: videoId,
@@ -1339,6 +1347,9 @@ function playSingleTrack(videoId, trackData = null) {
         Player.play(track);
     }
 }
+
+// Global alias for compatibility
+window.playTrack = playSingleTrack;
 
 function playTrackFromResults(index) {
     const track = AppState.searchResults[index];

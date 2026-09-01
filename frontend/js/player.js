@@ -180,9 +180,19 @@ const Player = {
     _bgAudioInitialized: false,
 
     init() {
-        this.audio = new Audio();
-        this.audio.crossOrigin = 'anonymous';
-        this.audio.preload = 'auto';
+        let existingAudio = document.getElementById('wave-native-audio');
+        if (!existingAudio) {
+            this.audio = document.createElement('audio');
+            this.audio.id = 'wave-native-audio';
+            this.audio.setAttribute('playsinline', '');
+            this.audio.setAttribute('webkit-playsinline', '');
+            this.audio.crossOrigin = 'anonymous';
+            this.audio.preload = 'auto';
+            this.audio.style.display = 'none';
+            document.body.appendChild(this.audio);
+        } else {
+            this.audio = existingAudio;
+        }
         this.audio.volume = this.volume / 100;
 
         YTBridge.init();
@@ -195,6 +205,9 @@ const Player = {
         // Unlock audio context and background playback on first user touch / click
         const unlockAudio = () => {
             this.initBackgroundAudioSession();
+            if (this.audio) {
+                this.audio.play().catch(() => {});
+            }
             window.removeEventListener('click', unlockAudio);
             window.removeEventListener('touchstart', unlockAudio);
             window.removeEventListener('keydown', unlockAudio);
@@ -309,6 +322,7 @@ const Player = {
             lyricsPlayBtn: document.getElementById('btn-lyrics-play'),
             lyricsPrevBtn: document.getElementById('btn-lyrics-prev'),
             lyricsNextBtn: document.getElementById('btn-lyrics-next'),
+            lyricsRepeatBtn: document.getElementById('btn-lyrics-repeat'),
             lyricsLikeBtn: document.getElementById('btn-lyrics-like'),
             lyricsMoreBtn: document.getElementById('btn-lyrics-more'),
             lyricsMoreSheet: document.getElementById('lyrics-more-sheet'),
@@ -372,6 +386,10 @@ const Player = {
             e.stopPropagation();
             this.next();
         });
+        this.elements.lyricsRepeatBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleRepeat();
+        });
         this.elements.lyricsLikeBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
             this.toggleLike();
@@ -407,6 +425,19 @@ const Player = {
             this.toggleLyricsMoreSheet(false);
             document.getElementById('lyrics-overlay')?.classList.add('hidden');
             navigateTo('queue');
+        });
+        document.getElementById('lyrics-sheet-add-playlist')?.addEventListener('click', () => {
+            if (this.currentTrack && typeof Library !== 'undefined') {
+                this.toggleLyricsMoreSheet(false);
+                Library.openAddToPlaylistModal(this.currentTrack.video_id, this.currentTrack);
+            }
+        });
+        document.getElementById('lyrics-sheet-add-queue')?.addEventListener('click', () => {
+            if (this.currentTrack) {
+                this.addToQueue(this.currentTrack);
+                showToast(`Added "${this.currentTrack.track_name || this.currentTrack.title}" to queue`);
+                this.toggleLyricsMoreSheet(false);
+            }
         });
         document.getElementById('lyrics-sheet-shuffle')?.addEventListener('click', () => {
             this.toggleShuffle();
@@ -479,6 +510,9 @@ const Player = {
         if (show) {
             sheet.classList.remove('hidden');
             this.updateMoreSheetToggles();
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons({ nodes: [sheet] });
+            }
         } else {
             sheet.classList.add('hidden');
         }
@@ -487,12 +521,17 @@ const Player = {
     updateMoreSheetToggles() {
         const shuffleText = document.getElementById('lyrics-sheet-shuffle-text');
         const repeatText = document.getElementById('lyrics-sheet-repeat-text');
+        const queueText = document.getElementById('lyrics-sheet-queue-text');
         if (shuffleText) {
             shuffleText.textContent = `Shuffle: ${this.shuffleEnabled ? 'On' : 'Off'}`;
         }
         if (repeatText) {
             const repeatLabels = { off: 'Off', all: 'All', one: 'One' };
             repeatText.textContent = `Repeat: ${repeatLabels[this.repeatMode] || 'Off'}`;
+        }
+        if (queueText) {
+            const count = this.queue.length;
+            queueText.textContent = count > 0 ? `View Queue (${count} song${count > 1 ? 's' : ''})` : 'View Queue / Up Next';
         }
     },
 
@@ -507,6 +546,9 @@ const Player = {
                     Lyrics.loadLyrics(this.currentTrack);
                 }
                 this.updateTrackUI(this.currentTrack);
+            }
+            if (this.isPlaying) {
+                this.startPrecisionSyncLoop();
             }
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
@@ -526,6 +568,55 @@ const Player = {
     // ============================================
     // Playback
     // ============================================
+
+    _syncRafId: null,
+
+    startPrecisionSyncLoop() {
+        this.stopPrecisionSyncLoop();
+        const syncLoop = () => {
+            if (!this.isPlaying) return;
+
+            const curTime = (this.activeEngine === 'yt' && YTBridge.player?.getCurrentTime)
+                ? YTBridge.player.getCurrentTime()
+                : (this.audio?.currentTime || 0);
+
+            const dur = (this.activeEngine === 'yt' && YTBridge.player?.getDuration)
+                ? YTBridge.player.getDuration()
+                : (this.audio?.duration || this.currentTrack?.duration || 0);
+
+            if (dur > 0) {
+                const percent = (curTime / dur) * 100;
+                if (this.elements.progressFill) {
+                    this.elements.progressFill.style.width = `${percent}%`;
+                }
+                if (this.elements.lyricsProgressFill) {
+                    this.elements.lyricsProgressFill.style.width = `${percent}%`;
+                }
+                const curFormatted = formatDuration(curTime);
+                if (this.elements.timeCurrent && this.elements.timeCurrent.textContent !== curFormatted) {
+                    this.elements.timeCurrent.textContent = curFormatted;
+                }
+                if (this.elements.lyricsTimeCurrent && this.elements.lyricsTimeCurrent.textContent !== curFormatted) {
+                    this.elements.lyricsTimeCurrent.textContent = curFormatted;
+                }
+            }
+
+            // Real-time sub-millisecond lyrics sync
+            if (typeof Lyrics !== 'undefined' && !document.getElementById('lyrics-overlay')?.classList.contains('hidden')) {
+                Lyrics.syncToTime(curTime);
+            }
+
+            this._syncRafId = requestAnimationFrame(syncLoop);
+        };
+        this._syncRafId = requestAnimationFrame(syncLoop);
+    },
+
+    stopPrecisionSyncLoop() {
+        if (this._syncRafId) {
+            cancelAnimationFrame(this._syncRafId);
+            this._syncRafId = null;
+        }
+    },
 
     async play(track) {
         if (!track || !track.video_id) return;
@@ -548,20 +639,29 @@ const Player = {
         }
 
         // Set audio stream URL (local blob, extracted link proxy, or standard stream proxy)
+        let streamSrc = '';
         if (track.isLocal && track.objectUrl) {
-            this.audio.src = track.objectUrl;
+            streamSrc = track.objectUrl;
         } else if (track.is_extracted || (track.video_id && track.video_id.startsWith('ext_'))) {
-            this.audio.src = `/api/extract/stream/${track.video_id}`;
+            streamSrc = `/api/extract/stream/${track.video_id}`;
         } else {
-            this.audio.src = `/api/stream/${track.video_id}`;
+            streamSrc = `/api/stream/${track.video_id}`;
         }
 
+        this.audio.src = streamSrc;
+        this.audio.load();
+
         try {
-            await this.audio.play();
+            const playPromise = this.audio.play();
+            if (playPromise !== undefined) {
+                await playPromise;
+            }
             this.isPlaying = true;
             this.onPlayState(true);
+            this.startPrecisionSyncLoop();
             this.postPlayTracking(track, prevTrackId);
         } catch (error) {
+            if (error.name === 'AbortError') return;
             console.warn('Native audio stream error on cloud, seamlessly switching to client YouTube Audio Engine:', error);
             if (!track.isLocal && track.video_id && !track.video_id.startsWith('ext_')) {
                 this.playViaYTBridge(track, prevTrackId);
@@ -1215,12 +1315,29 @@ const Player = {
         const idx = modes.indexOf(this.repeatMode);
         this.repeatMode = modes[(idx + 1) % modes.length];
 
-        const btn = this.elements.repeatBtn;
-        btn?.classList.toggle('active', this.repeatMode !== 'off');
-        btn?.classList.toggle('repeat-one', this.repeatMode === 'one');
+        this.updateRepeatUI();
 
         const labels = { off: 'Repeat off', all: 'Repeat all', one: 'Repeat one' };
         showToast(labels[this.repeatMode], 'info');
+    },
+
+    updateRepeatUI() {
+        const isOff = this.repeatMode === 'off';
+        const isOne = this.repeatMode === 'one';
+
+        const btn = this.elements.repeatBtn;
+        if (btn) {
+            btn.classList.toggle('active', !isOff);
+            btn.classList.toggle('repeat-one', isOne);
+        }
+
+        const lyricsBtn = this.elements.lyricsRepeatBtn;
+        if (lyricsBtn) {
+            lyricsBtn.classList.toggle('active', !isOff);
+            lyricsBtn.classList.toggle('repeat-one', isOne);
+        }
+
+        this.updateMoreSheetToggles();
     },
 
     // ============================================
@@ -1323,6 +1440,7 @@ const Player = {
         if (this.elements.lyricsTimeDuration) {
             this.elements.lyricsTimeDuration.textContent = formatDuration(this.audio.duration);
         }
+        this.updatePositionState();
     },
 
     onEnded() {
@@ -1348,8 +1466,10 @@ const Player = {
                 this.audioCtx.resume().catch(() => {});
             }
             this.requestWakeLock();
+            this.startPrecisionSyncLoop();
         } else {
             this.releaseWakeLock();
+            this.stopPrecisionSyncLoop();
         }
 
         // Update OS Media Session Playback State (enables lock screen media controls)
@@ -1453,6 +1573,9 @@ const Player = {
 
         // Update like state for currently playing song
         this.checkLikeStatus(track.video_id);
+
+        // Update OS Media Session (Lock screen metadata and controls)
+        this.updateMediaSession(track);
     },
 
     // ============================================
@@ -1461,44 +1584,59 @@ const Player = {
 
     setupMediaSession() {
         if ('mediaSession' in navigator) {
-            navigator.mediaSession.setActionHandler('play', () => this.togglePlay());
-            navigator.mediaSession.setActionHandler('pause', () => this.togglePlay());
-            navigator.mediaSession.setActionHandler('previoustrack', () => this.previous());
-            navigator.mediaSession.setActionHandler('nexttrack', () => this.next());
-            navigator.mediaSession.setActionHandler('seekto', (details) => {
-                if (details.seekTime !== undefined) {
-                    if (this.activeEngine === 'yt') {
-                        YTBridge.seekTo(details.seekTime);
-                    } else {
-                        this.seekToSeconds(details.seekTime);
+            const actionHandlers = [
+                ['play', () => this.togglePlay()],
+                ['pause', () => this.togglePlay()],
+                ['previoustrack', () => this.previous()],
+                ['nexttrack', () => this.next()],
+                ['seekto', (details) => {
+                    if (details.seekTime !== undefined) {
+                        if (this.activeEngine === 'yt') {
+                            YTBridge.seekTo(details.seekTime);
+                        } else {
+                            this.seekToSeconds(details.seekTime);
+                        }
+                        this.updatePositionState();
                     }
+                }],
+                ['seekbackward', (details) => {
+                    this.seekRelative(-(details.seekOffset || 10));
+                    this.updatePositionState();
+                }],
+                ['seekforward', (details) => {
+                    this.seekRelative(details.seekOffset || 10);
+                    this.updatePositionState();
+                }],
+                ['stop', () => {
+                    if (this.activeEngine === 'yt') {
+                        YTBridge.pause();
+                    } else {
+                        this.audio.pause();
+                    }
+                    this.onPlayState(false);
+                }]
+            ];
+
+            for (const [action, handler] of actionHandlers) {
+                try {
+                    navigator.mediaSession.setActionHandler(action, handler);
+                } catch (e) {
+                    console.debug(`MediaSession action "${action}" not supported:`, e);
                 }
-            });
-            navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-                this.seekRelative(-(details.seekOffset || 10));
-            });
-            navigator.mediaSession.setActionHandler('seekforward', (details) => {
-                this.seekRelative(details.seekOffset || 10);
-            });
-            navigator.mediaSession.setActionHandler('stop', () => {
-                if (this.activeEngine === 'yt') {
-                    YTBridge.pause();
-                } else {
-                    this.audio.pause();
-                }
-                this.onPlayState(false);
-            });
+            }
         }
     },
 
     updateMediaSession(track) {
-        if ('mediaSession' in navigator) {
-            const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : null;
-            const title = (meta?.title) || track.track_name || track.title || 'Unknown';
-            const artist = (meta?.artist) || track.artist || 'Unknown Artist';
-            const album = (meta?.movie) || track.movie || 'Wave Music';
-            const artUrl = track.thumbnail || track.album_art || '/static/icons/icon-512.png';
+        if (!track || !('mediaSession' in navigator)) return;
 
+        const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : null;
+        const title = (meta?.title) || track.track_name || track.title || 'Unknown Track';
+        const artist = (meta?.movie) || (meta?.artist) || track.artist || 'Wave Music';
+        const album = (meta?.movie) || track.movie || 'Wave';
+        const artUrl = track.thumbnail || track.album_art || '/static/icons/icon-512.png';
+
+        try {
             navigator.mediaSession.metadata = new MediaMetadata({
                 title: title,
                 artist: artist,
@@ -1513,6 +1651,31 @@ const Player = {
                 ],
             });
             navigator.mediaSession.playbackState = this.isPlaying ? 'playing' : 'paused';
+            this.updatePositionState();
+        } catch (e) {
+            console.debug('MediaSession metadata error:', e);
+        }
+    },
+
+    updatePositionState() {
+        if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+            const dur = (this.activeEngine === 'yt' && YTBridge.player?.getDuration)
+                ? YTBridge.player.getDuration()
+                : (this.audio?.duration || this.currentTrack?.duration || 0);
+
+            const pos = (this.activeEngine === 'yt' && YTBridge.player?.getCurrentTime)
+                ? YTBridge.player.getCurrentTime()
+                : (this.audio?.currentTime || 0);
+
+            if (dur > 0 && !isNaN(dur) && !isNaN(pos)) {
+                try {
+                    navigator.mediaSession.setPositionState({
+                        duration: dur,
+                        playbackRate: this.audio?.playbackRate || 1.0,
+                        position: Math.min(Math.max(0, pos), dur),
+                    });
+                } catch (e) {}
+            }
         }
     },
 };

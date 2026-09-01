@@ -254,7 +254,7 @@ const Library = {
                             const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(item) : { title: item.title, movie: '', language: '', artist: item.artist, subtitle: item.artist };
                             const sub = meta.movie ? (meta.language ? `${meta.movie} • ${meta.language}` : meta.movie) : (meta.language ? `${meta.artist} • ${meta.language}` : meta.artist);
                             return `
-                            <div class="track-row" onclick="playTrack('${item.video_id}', { video_id: '${item.video_id}', title: '${escapeHtml(meta.title)}', artist: '${escapeHtml(sub)}', thumbnail: '${item.thumbnail}' })">
+                            <div class="track-row" onclick="playSingleTrack('${item.video_id}', { video_id: '${item.video_id}', title: '${escapeHtml(meta.title)}', artist: '${escapeHtml(sub)}', thumbnail: '${item.thumbnail}' })">
                                 <div class="track-row-art">
                                     <img src="${item.thumbnail || ''}" alt="" onerror="this.style.display='none'">
                                 </div>
@@ -263,7 +263,7 @@ const Library = {
                                     <div class="track-row-artist">${escapeHtml(sub)}</div>
                                 </div>
                                 <div class="track-row-duration">
-                                    <button class="btn-icon" onclick="event.stopPropagation(); playTrack('${item.video_id}', { video_id: '${item.video_id}', title: '${escapeHtml(meta.title)}', artist: '${escapeHtml(sub)}', thumbnail: '${item.thumbnail}' })" title="Play">
+                                    <button class="btn-icon" onclick="event.stopPropagation(); playSingleTrack('${item.video_id}', { video_id: '${item.video_id}', title: '${escapeHtml(meta.title)}', artist: '${escapeHtml(sub)}', thumbnail: '${item.thumbnail}' })" title="Play">
                                         <i data-lucide="play"></i>
                                     </button>
                                 </div>

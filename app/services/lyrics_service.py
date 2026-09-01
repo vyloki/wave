@@ -312,10 +312,18 @@ def _parse_lrc(lrc_text: str) -> List[Dict]:
         if match:
             minutes = int(match.group(1))
             seconds = int(match.group(2))
-            centiseconds = int(match.group(3) or 0)
-            text = match.group(4).strip()
+            frac_str = match.group(3)
+            frac = 0.0
+            if frac_str:
+                if len(frac_str) == 1:
+                    frac = int(frac_str) / 10.0
+                elif len(frac_str) == 2:
+                    frac = int(frac_str) / 100.0
+                else:
+                    frac = int(frac_str[:3]) / 1000.0
 
-            time_seconds = minutes * 60 + seconds + centiseconds / 100.0
+            text = match.group(4).strip()
+            time_seconds = minutes * 60 + seconds + frac
 
             if text:
                 # Transliterate Telugu/Indic words to English spelling

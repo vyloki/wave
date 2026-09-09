@@ -184,14 +184,18 @@ const Player = {
         if (!existingAudio) {
             this.audio = document.createElement('audio');
             this.audio.id = 'wave-native-audio';
-            this.audio.setAttribute('playsinline', '');
-            this.audio.setAttribute('webkit-playsinline', '');
-            this.audio.crossOrigin = 'anonymous';
+            this.audio.setAttribute('playsinline', 'true');
+            this.audio.setAttribute('webkit-playsinline', 'true');
+            this.audio.setAttribute('x-webkit-airplay', 'allow');
             this.audio.preload = 'auto';
             this.audio.style.display = 'none';
             document.body.appendChild(this.audio);
         } else {
             this.audio = existingAudio;
+            this.audio.setAttribute('playsinline', 'true');
+            this.audio.setAttribute('webkit-playsinline', 'true');
+            this.audio.setAttribute('x-webkit-airplay', 'allow');
+            this.audio.preload = 'auto';
         }
         this.audio.volume = this.volume / 100;
 
@@ -202,19 +206,30 @@ const Player = {
         this.bindAudioEvents();
         this.setupMediaSession();
 
-        // Unlock audio context and background playback on first user touch / click
+        // Unlock audio playback on first user touch / click
         const unlockAudio = () => {
-            this.initBackgroundAudioSession();
-            if (this.audio) {
-                this.audio.play().catch(() => {});
+            if (this.audio && !this.audio.src) {
+                // Initialize audio element ready state for iOS Safari
+                try {
+                    this.audio.load();
+                } catch (e) {}
             }
             window.removeEventListener('click', unlockAudio);
             window.removeEventListener('touchstart', unlockAudio);
             window.removeEventListener('keydown', unlockAudio);
         };
-        window.addEventListener('click', unlockAudio, { passive: true });
-        window.addEventListener('touchstart', unlockAudio, { passive: true });
-        window.addEventListener('keydown', unlockAudio, { passive: true });
+        window.addEventListener('click', unlockAudio, { passive: true, once: true });
+        window.addEventListener('touchstart', unlockAudio, { passive: true, once: true });
+        window.addEventListener('keydown', unlockAudio, { passive: true, once: true });
+
+        // Screen Wake Lock handling during active playback
+        if ('wakeLock' in navigator) {
+            document.addEventListener('visibilitychange', async () => {
+                if (document.visibilityState === 'visible' && this.isPlaying) {
+                    this.requestWakeLock();
+                }
+            });
+        }
 
         const savedVolume = localStorage.getItem('wave_volume');
         if (savedVolume !== null) {
@@ -227,49 +242,6 @@ const Player = {
 
         if (typeof lucide !== 'undefined') {
             lucide.createIcons();
-        }
-    },
-
-    initBackgroundAudioSession() {
-        if (this._bgAudioInitialized) {
-            if (this.audioCtx && this.audioCtx.state === 'suspended') {
-                this.audioCtx.resume().catch(() => {});
-            }
-            return;
-        }
-        this._bgAudioInitialized = true;
-
-        try {
-            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-            if (AudioContextClass && !this.audioCtx) {
-                this.audioCtx = new AudioContextClass();
-                // Create an inaudible silent buffer running continuously in background.
-                // Keeps Web Audio output active on iOS/Android WebKit, preventing OS thread
-                // suspension when screen is turned off or device locked.
-                const buffer = this.audioCtx.createBuffer(1, 22050, 22050);
-                const source = this.audioCtx.createBufferSource();
-                source.buffer = buffer;
-                source.loop = true;
-                const gain = this.audioCtx.createGain();
-                gain.gain.value = 0.0001;
-                source.connect(gain);
-                gain.connect(this.audioCtx.destination);
-                source.start(0);
-            }
-            if (this.audioCtx && this.audioCtx.state === 'suspended') {
-                this.audioCtx.resume().catch(() => {});
-            }
-        } catch (e) {
-            console.debug('Background audio session initialization:', e);
-        }
-
-        // Screen Wake Lock handling during active playback
-        if ('wakeLock' in navigator) {
-            document.addEventListener('visibilitychange', async () => {
-                if (document.visibilityState === 'visible' && this.isPlaying) {
-                    this.requestWakeLock();
-                }
-            });
         }
     },
 
@@ -621,11 +593,10 @@ const Player = {
     async play(track) {
         if (!track || !track.video_id) return;
 
-        this.initBackgroundAudioSession();
-
         const prevTrackId = this.currentTrack?.video_id;
         this.currentTrack = track;
         this.updateTrackUI(track);
+        this.updateMediaSession(track);
 
         // Reset previous playing engine
         if (this.activeEngine === 'yt') {
@@ -660,6 +631,9 @@ const Player = {
             this.onPlayState(true);
             this.startPrecisionSyncLoop();
             this.postPlayTracking(track, prevTrackId);
+
+            // Pre-fetch next tracks early so lock-screen autoplay is instantaneous
+            this.checkAndPrefetchRadio(track);
         } catch (error) {
             if (error.name === 'AbortError') return;
             console.warn('Native audio stream error on cloud, seamlessly switching to client YouTube Audio Engine:', error);
@@ -1391,6 +1365,11 @@ const Player = {
             Lyrics.syncToTime(this.audio.currentTime);
         }
 
+        // Pre-fetch next radio tracks when song is halfway through to ensure continuous lock-screen play
+        if (this.audio.duration > 0 && (this.audio.currentTime / this.audio.duration) > 0.45) {
+            this.checkAndPrefetchRadio(this.currentTrack);
+        }
+
         // Keep lock screen scrubber in sync with real-time playback
         if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession && !isNaN(this.audio.duration)) {
             try {
@@ -1460,11 +1439,7 @@ const Player = {
     onPlayState(playing) {
         this.isPlaying = playing;
 
-        // Keep background audio context active
         if (playing) {
-            if (this.audioCtx && this.audioCtx.state === 'suspended') {
-                this.audioCtx.resume().catch(() => {});
-            }
             this.requestWakeLock();
             this.startPrecisionSyncLoop();
         } else {
@@ -1599,14 +1574,8 @@ const Player = {
                         this.updatePositionState();
                     }
                 }],
-                ['seekbackward', (details) => {
-                    this.seekRelative(-(details.seekOffset || 10));
-                    this.updatePositionState();
-                }],
-                ['seekforward', (details) => {
-                    this.seekRelative(details.seekOffset || 10);
-                    this.updatePositionState();
-                }],
+                ['seekbackward', null], // Explicitly null out seek backward so OS prioritizes Previous Track button
+                ['seekforward', null],  // Explicitly null out seek forward so OS prioritizes Next Track button
                 ['stop', () => {
                     if (this.activeEngine === 'yt') {
                         YTBridge.pause();
@@ -1634,7 +1603,9 @@ const Player = {
         const title = (meta?.title) || track.track_name || track.title || 'Unknown Track';
         const artist = (meta?.movie) || (meta?.artist) || track.artist || 'Wave Music';
         const album = (meta?.movie) || track.movie || 'Wave';
-        const artUrl = track.thumbnail || track.album_art || '/static/icons/icon-512.png';
+        const rawArt = track.thumbnail || track.album_art || '/static/icons/icon-512.png';
+        const origin = window.location.origin;
+        const artUrl = rawArt.startsWith('http') ? rawArt : `${origin}${rawArt.startsWith('/') ? '' : '/'}${rawArt}`;
 
         try {
             navigator.mediaSession.metadata = new MediaMetadata({

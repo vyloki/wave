@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="description" content="Wave — Your Personal Music Streaming App. Search, play, and discover music from around the world.">
     <meta name="theme-color" content="#f5f0e8">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Wave">
 
     <title>Wave — Music</title>
 
@@ -24,9 +26,9 @@
     <link rel="icon" type="image/png" href="/static/icons/icon-192.png">
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/static/css/index.css?v=3.0">
-    <link rel="stylesheet" href="/static/css/player.css?v=3.0">
-    <link rel="stylesheet" href="/static/css/animations.css?v=3.0">
+    <link rel="stylesheet" href="/static/css/index.css?v=4.0">
+    <link rel="stylesheet" href="/static/css/player.css?v=4.0">
+    <link rel="stylesheet" href="/static/css/animations.css?v=4.0">
 </head>
 <body>
     <!-- ============================== -->
@@ -913,14 +915,14 @@
     <canvas id="visualizer-canvas" class="visualizer-canvas"></canvas>
 
     <!-- Scripts -->
-    <script src="/static/js/app.js?v=3.0"></script>
-    <script src="/static/js/auth.js?v=3.0"></script>
-    <script src="/static/js/player.js?v=3.0"></script>
-    <script src="/static/js/library.js?v=3.0"></script>
-    <script src="/static/js/extract.js?v=3.0"></script>
-    <script src="/static/js/lyrics.js?v=3.0"></script>
-    <script src="/static/js/local_import.js?v=3.0"></script>
-    <script src="/static/js/visualizer.js?v=3.0"></script>
+    <script src="/static/js/app.js?v=5.0"></script>
+    <script src="/static/js/auth.js?v=5.0"></script>
+    <script src="/static/js/player.js?v=5.0"></script>
+    <script src="/static/js/library.js?v=5.0"></script>
+    <script src="/static/js/extract.js?v=5.0"></script>
+    <script src="/static/js/lyrics.js?v=5.0"></script>
+    <script src="/static/js/local_import.js?v=5.0"></script>
+    <script src="/static/js/visualizer.js?v=5.0"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -928,7 +930,7 @@
 
             // Register Service Worker for PWA
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/static/sw.js?v=4.0').catch((err) => {
+                navigator.serviceWorker.register('/static/sw.js?v=6.0').catch((err) => {
                     console.debug('ServiceWorker registration skipped:', err);
                 });
             }

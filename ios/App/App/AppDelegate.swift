@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import AVFoundation
+import MediaPlayer
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -16,7 +17,62 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             print("Failed to configure AVAudioSession: \(error)")
         }
 
+        // Configure lock screen / notification center media controls
+        setupRemoteCommandCenter()
+
         return true
+    }
+
+    private func setupRemoteCommandCenter() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        // 1. Explicitly DISABLE 10-second / 15-second forward & backward buttons
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
+        commandCenter.seekForwardCommand.isEnabled = false
+        commandCenter.seekBackwardCommand.isEnabled = false
+
+        // 2. Explicitly ENABLE Next Track (⏭) and Previous Track (⏮) buttons
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            self?.executeJS("if (typeof Player !== 'undefined') Player.next();")
+            return .success
+        }
+
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            self?.executeJS("if (typeof Player !== 'undefined') Player.previous();")
+            return .success
+        }
+
+        // 3. Enable Play / Pause / Toggle
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            self?.executeJS("if (typeof Player !== 'undefined') { if (!Player.isPlaying) Player.togglePlay(); }")
+            return .success
+        }
+
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            self?.executeJS("if (typeof Player !== 'undefined') { if (Player.isPlaying) Player.togglePlay(); }")
+            return .success
+        }
+
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            self?.executeJS("if (typeof Player !== 'undefined') Player.togglePlay();")
+            return .success
+        }
+
+        UIApplication.shared.beginReceivingRemoteControlEvents()
+    }
+
+    private func executeJS(_ js: String) {
+        DispatchQueue.main.async {
+            if let bridgeVC = self.window?.rootViewController as? CAPBridgeViewController {
+                bridgeVC.webView?.evaluateJavaScript(js, completionHandler: nil)
+            }
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

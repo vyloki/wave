@@ -195,7 +195,7 @@ const Player = {
             this.audio.setAttribute('webkit-playsinline', 'true');
             this.audio.setAttribute('x-webkit-airplay', 'allow');
             this.audio.preload = 'auto';
-            this.audio.style.display = 'none';
+            this.audio.style.cssText = 'position:fixed;bottom:-9999px;left:-9999px;width:1px;height:1px;opacity:0.01;pointer-events:none;';
             document.body.appendChild(this.audio);
         } else {
             this.audio = existingAudio;
@@ -203,6 +203,7 @@ const Player = {
             this.audio.setAttribute('webkit-playsinline', 'true');
             this.audio.setAttribute('x-webkit-airplay', 'allow');
             this.audio.preload = 'auto';
+            this.audio.style.cssText = 'position:fixed;bottom:-9999px;left:-9999px;width:1px;height:1px;opacity:0.01;pointer-events:none;';
         }
         this.audio.volume = this.volume / 100;
 
@@ -216,11 +217,6 @@ const Player = {
 
         // Unlock audio playback on first user touch / click
         const unlockAudio = () => {
-            if (this.audio && !this.audio.src) {
-                try {
-                    this.audio.load();
-                } catch (e) {}
-            }
             window.removeEventListener('click', unlockAudio);
             window.removeEventListener('touchstart', unlockAudio);
             window.removeEventListener('keydown', unlockAudio);
@@ -659,6 +655,10 @@ const Player = {
             this.saveToLocalHistory(track);
         }
 
+        // Prevent double execution on rapid touches
+        if (this._currentLoadingId === track.video_id && this.isPlaying) return;
+        this._currentLoadingId = track.video_id;
+
         // Set audio stream URL (local blob, extracted link proxy, or standard stream proxy)
         let streamSrc = '';
         const apiBase = (typeof API !== 'undefined' && API.baseUrl) ? API.baseUrl : '';
@@ -670,23 +670,36 @@ const Player = {
             streamSrc = `${apiBase}/api/stream/${track.video_id}`;
         }
 
+        // Directly set src WITHOUT calling .load() to prevent AbortError in WebKit
         this.audio.src = streamSrc;
-        this.audio.load();
+
+        const onPlaybackStarted = () => {
+            this.isPlaying = true;
+            this.onPlayState(true);
+            this.startPrecisionSyncLoop();
+            this.postPlayTracking(track, prevTrackId);
+            this.checkAndPrefetchRadio(track);
+            this._currentLoadingId = null;
+        };
 
         try {
             const playPromise = this.audio.play();
             if (playPromise !== undefined) {
                 await playPromise;
             }
-            this.isPlaying = true;
-            this.onPlayState(true);
-            this.startPrecisionSyncLoop();
-            this.postPlayTracking(track, prevTrackId);
-
-            // Pre-fetch next tracks early so lock-screen autoplay is instantaneous
-            this.checkAndPrefetchRadio(track);
+            onPlaybackStarted();
         } catch (error) {
-            if (error.name === 'AbortError') return;
+            if (error.name === 'AbortError' || error.name === 'NotAllowedError') {
+                // In iOS WebKit, play can be queued while buffer initializes: retry on canplay
+                const retryPlay = () => {
+                    this.audio.removeEventListener('canplay', retryPlay);
+                    this.audio.removeEventListener('loadeddata', retryPlay);
+                    this.audio.play().then(onPlaybackStarted).catch(() => {});
+                };
+                this.audio.addEventListener('canplay', retryPlay, { once: true });
+                this.audio.addEventListener('loadeddata', retryPlay, { once: true });
+                return;
+            }
             console.warn('Native audio stream error on cloud, seamlessly switching to client YouTube Audio Engine:', error);
             if (!track.isLocal && track.video_id && !track.video_id.startsWith('ext_')) {
                 this.playViaYTBridge(track, prevTrackId);

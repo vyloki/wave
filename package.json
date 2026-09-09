@@ -1,0 +1,17 @@
+{
+  "name": "wave",
+  "version": "1.0.0",
+  "description": "Wave Music Streaming Application",
+  "private": true,
+  "scripts": {
+    "cap:sync": "cap sync",
+    "cap:open": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.0.1",
+    "@capacitor/ios": "^7.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.1"
+  }
+}

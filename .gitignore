@@ -34,3 +34,17 @@ Thumbs.db
 
 # Cache
 .cache/
+
+# Node
+node_modules/
+package-lock.json
+
+# iOS / Xcode
+ios/App/Pods/
+ios/App/Podfile.lock
+ios/App/App/public/
+.build/
+*.xcuserstate
+project.xcworkspace
+xcuserdata
+

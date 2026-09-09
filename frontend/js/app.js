@@ -9,7 +9,30 @@
 // ============================================
 
 const API = {
-    baseUrl: '',
+    baseUrl: (function() {
+        if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem('wave_server_url');
+            if (stored) return stored.replace(/\/+$/, '');
+            const isNative = window.Capacitor !== undefined || 
+                             window.location.protocol === 'capacitor:' || 
+                             window.location.protocol === 'ionic:';
+            if (isNative && window.WAVE_SERVER_URL) {
+                return window.WAVE_SERVER_URL.replace(/\/+$/, '');
+            }
+        }
+        return '';
+    })(),
+
+    setBaseUrl(url) {
+        this.baseUrl = (url || '').replace(/\/+$/, '');
+        if (typeof localStorage !== 'undefined') {
+            if (this.baseUrl) {
+                localStorage.setItem('wave_server_url', this.baseUrl);
+            } else {
+                localStorage.removeItem('wave_server_url');
+            }
+        }
+    },
 
     getHeaders() {
         const headers = { 'Content-Type': 'application/json' };

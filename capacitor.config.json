@@ -1,0 +1,18 @@
+{
+  "appId": "com.vyloki.wave",
+  "appName": "Wave",
+  "webDir": "frontend",
+  "bundledWebRuntime": false,
+  "ios": {
+    "contentInset": "always",
+    "allowsLinkPreview": false,
+    "scrollEnabled": true,
+    "preferredContentMode": "mobile"
+  },
+  "server": {
+    "cleartext": true,
+    "allowNavigation": [
+      "*"
+    ]
+  }
+}

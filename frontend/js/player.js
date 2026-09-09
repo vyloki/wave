@@ -661,12 +661,13 @@ const Player = {
 
         // Set audio stream URL (local blob, extracted link proxy, or standard stream proxy)
         let streamSrc = '';
+        const apiBase = (typeof API !== 'undefined' && API.baseUrl) ? API.baseUrl : '';
         if (track.isLocal && track.objectUrl) {
             streamSrc = track.objectUrl;
         } else if (track.is_extracted || (track.video_id && track.video_id.startsWith('ext_'))) {
-            streamSrc = `/api/extract/stream/${track.video_id}`;
+            streamSrc = `${apiBase}/api/extract/stream/${track.video_id}`;
         } else {
-            streamSrc = `/api/stream/${track.video_id}`;
+            streamSrc = `${apiBase}/api/stream/${track.video_id}`;
         }
 
         this.audio.src = streamSrc;

@@ -2,6 +2,7 @@
  * YouTube Audio Bridge
  * Client-side embedded playback engine to bypass cloud IP data center rate-limits.
  */
+console.info('Wave Player v10.0: Next/Prev track active, 10s skip removed');
 const YTBridge = {
     player: null,
     isReady: false,

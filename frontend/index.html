@@ -915,25 +915,29 @@
     <canvas id="visualizer-canvas" class="visualizer-canvas"></canvas>
 
     <!-- Scripts -->
-    <script src="/static/js/app.js?v=6.0"></script>
-    <script src="/static/js/auth.js?v=6.0"></script>
-    <script src="/static/js/player.js?v=6.0"></script>
-    <script src="/static/js/library.js?v=6.0"></script>
-    <script src="/static/js/extract.js?v=6.0"></script>
-    <script src="/static/js/lyrics.js?v=6.0"></script>
-    <script src="/static/js/local_import.js?v=6.0"></script>
-    <script src="/static/js/visualizer.js?v=6.0"></script>
+    <script>
+        // Immediately unregister all Service Workers and clear all cache storage
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then((regs) => {
+                for (const reg of regs) reg.unregister();
+            });
+        }
+        if ('caches' in window) {
+            caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+        }
+    </script>
+    <script src="/static/js/app.js?v=10.0"></script>
+    <script src="/static/js/auth.js?v=10.0"></script>
+    <script src="/static/js/player.js?v=10.0"></script>
+    <script src="/static/js/library.js?v=10.0"></script>
+    <script src="/static/js/extract.js?v=10.0"></script>
+    <script src="/static/js/lyrics.js?v=10.0"></script>
+    <script src="/static/js/local_import.js?v=10.0"></script>
+    <script src="/static/js/visualizer.js?v=10.0"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
-
-            // Register Service Worker for PWA
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/static/sw.js?v=7.0').catch((err) => {
-                    console.debug('ServiceWorker registration skipped:', err);
-                });
-            }
         });
     </script>
 </body>

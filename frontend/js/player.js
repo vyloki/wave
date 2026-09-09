@@ -1665,23 +1665,10 @@ const Player = {
             });
         } catch (e) { console.debug('MediaSession nexttrack not supported:', e); }
 
-        // Seek-to for lock screen scrubber/progress bar
-        try {
-            navigator.mediaSession.setActionHandler('seekto', (details) => {
-                if (details.seekTime !== undefined) {
-                    if (this.activeEngine === 'yt') {
-                        YTBridge.seekTo(details.seekTime);
-                    } else {
-                        this.seekToSeconds(details.seekTime);
-                    }
-                    this.updatePositionState();
-                }
-            });
-        } catch (e) { console.debug('MediaSession seekto not supported:', e); }
-
-        // IMPORTANT: Do NOT register 'seekbackward' or 'seekforward' handlers at all.
-        // When these are not registered, iOS/Android shows Previous/Next track buttons instead.
-        // Setting them to null still counts as "registered" on some browsers.
+        // Explicitly UNREGISTER seekto, seekbackward, and seekforward so WebKit/iOS does not show 10s skip buttons
+        try { navigator.mediaSession.setActionHandler('seekto', null); } catch (e) {}
+        try { navigator.mediaSession.setActionHandler('seekbackward', null); } catch (e) {}
+        try { navigator.mediaSession.setActionHandler('seekforward', null); } catch (e) {}
 
         try {
             navigator.mediaSession.setActionHandler('stop', () => {
@@ -1697,6 +1684,9 @@ const Player = {
 
     updateMediaSession(track) {
         if (!track || !('mediaSession' in navigator)) return;
+
+        // Re-affirm Next & Previous track action handlers for this active song
+        this.setupMediaSession();
 
         const meta = typeof getTrackMetadata === 'function' ? getTrackMetadata(track) : null;
         const title = (meta?.title) || track.track_name || track.title || 'Unknown Track';

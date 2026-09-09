@@ -23,14 +23,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 
+    private var commandCenterTimer: Timer?
+
     private func setupRemoteCommandCenter() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
-        // 1. Explicitly DISABLE 10-second / 15-second forward & backward buttons
+        // 1. Explicitly REMOVE any skip/seek targets and disable them
+        commandCenter.skipForwardCommand.removeTarget(nil)
+        commandCenter.skipBackwardCommand.removeTarget(nil)
+        commandCenter.seekForwardCommand.removeTarget(nil)
+        commandCenter.seekBackwardCommand.removeTarget(nil)
+        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+
         commandCenter.skipForwardCommand.isEnabled = false
         commandCenter.skipBackwardCommand.isEnabled = false
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
+        commandCenter.changePlaybackPositionCommand.isEnabled = false
 
         // 2. Explicitly ENABLE Next Track (⏭) and Previous Track (⏮) buttons
         commandCenter.nextTrackCommand.isEnabled = true
@@ -65,6 +74,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         UIApplication.shared.beginReceivingRemoteControlEvents()
+
+        // Periodically enforce track navigation commands so WebKit cannot re-enable skip/seek
+        commandCenterTimer?.invalidate()
+        commandCenterTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.enforceTrackNavigationCommands()
+        }
+    }
+
+    private func enforceTrackNavigationCommands() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
+        commandCenter.seekForwardCommand.isEnabled = false
+        commandCenter.seekBackwardCommand.isEnabled = false
+        commandCenter.changePlaybackPositionCommand.isEnabled = false
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.isEnabled = true
     }
 
     private func executeJS(_ js: String) {

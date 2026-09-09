@@ -1366,7 +1366,24 @@ function playSingleTrack(videoId, trackData = null) {
     }
 
     if (typeof Player !== 'undefined') {
-        Player.setQueue([track], 0);
+        let queueList = [track];
+        let queueIdx = 0;
+        if (allKnown.length > 1) {
+            const seen = new Set();
+            const unique = [];
+            for (const t of allKnown) {
+                if (t && t.video_id && !seen.has(t.video_id)) {
+                    seen.add(t.video_id);
+                    unique.push(t);
+                }
+            }
+            const foundIdx = unique.findIndex(t => t.video_id === videoId);
+            if (foundIdx !== -1) {
+                queueList = unique;
+                queueIdx = foundIdx;
+            }
+        }
+        Player.setQueue(queueList, queueIdx);
         Player.play(track);
     }
 }

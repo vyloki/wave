@@ -178,8 +178,15 @@ const Player = {
     audioCtx: null,
     wakeLock: null,
     _bgAudioInitialized: false,
+    _ytBridgeInitialized: false,
+    _isMobile: false,
 
     init() {
+        // Detect mobile early for performance decisions
+        this._isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile/i.test(navigator.userAgent) ||
+                         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+                         window.matchMedia('(pointer: coarse)').matches;
+
         let existingAudio = document.getElementById('wave-native-audio');
         if (!existingAudio) {
             this.audio = document.createElement('audio');
@@ -199,7 +206,8 @@ const Player = {
         }
         this.audio.volume = this.volume / 100;
 
-        YTBridge.init();
+        // LAZY: Do NOT init YTBridge on page load — only when first YT fallback is needed
+        // YTBridge loads the entire YouTube iframe API script which wastes bandwidth + CPU on mobile
 
         this.cacheElements();
         this.bindEvents();
@@ -209,7 +217,6 @@ const Player = {
         // Unlock audio playback on first user touch / click
         const unlockAudio = () => {
             if (this.audio && !this.audio.src) {
-                // Initialize audio element ready state for iOS Safari
                 try {
                     this.audio.load();
                 } catch (e) {}
@@ -222,14 +229,24 @@ const Player = {
         window.addEventListener('touchstart', unlockAudio, { passive: true, once: true });
         window.addEventListener('keydown', unlockAudio, { passive: true, once: true });
 
-        // Screen Wake Lock handling during active playback
-        if ('wakeLock' in navigator) {
-            document.addEventListener('visibilitychange', async () => {
-                if (document.visibilityState === 'visible' && this.isPlaying) {
+        // Background audio recovery + Wake Lock
+        // When user switches back to the app, resume audio if it was playing
+        document.addEventListener('visibilitychange', async () => {
+            if (document.visibilityState === 'visible') {
+                // Resume audio if it was supposed to be playing but iOS paused it
+                if (this.isPlaying && this.activeEngine === 'audio' && this.audio.paused && this.audio.src) {
+                    try {
+                        await this.audio.play();
+                    } catch (e) {
+                        console.debug('Background audio resume failed:', e);
+                    }
+                }
+                // Re-acquire wake lock
+                if (this.isPlaying && 'wakeLock' in navigator) {
                     this.requestWakeLock();
                 }
-            });
-        }
+            }
+        });
 
         const savedVolume = localStorage.getItem('wave_volume');
         if (savedVolume !== null) {
@@ -242,6 +259,14 @@ const Player = {
 
         if (typeof lucide !== 'undefined') {
             lucide.createIcons();
+        }
+    },
+
+    // Lazy-init YTBridge only when actually needed (saves CPU + memory on mobile)
+    ensureYTBridge() {
+        if (!this._ytBridgeInitialized) {
+            this._ytBridgeInitialized = true;
+            YTBridge.init();
         }
     },
 
@@ -543,10 +568,34 @@ const Player = {
 
     _syncRafId: null,
 
+    /**
+     * Precision sync loop for lyrics. On mobile, this ONLY runs when the lyrics
+     * overlay is visible (to avoid burning battery with a 60fps rAF loop).
+     * On desktop, it runs always for smoother progress bar updates.
+     * On mobile without lyrics open, the native 'timeupdate' event handles progress.
+     */
     startPrecisionSyncLoop() {
         this.stopPrecisionSyncLoop();
+
+        // On mobile: only run rAF loop if lyrics overlay is actually open
+        const lyricsOverlay = document.getElementById('lyrics-overlay');
+        const lyricsOpen = lyricsOverlay && !lyricsOverlay.classList.contains('hidden');
+        if (this._isMobile && !lyricsOpen) {
+            // Mobile without lyrics → rely on timeupdate event (fires ~4x/sec, saves massive battery)
+            return;
+        }
+
         const syncLoop = () => {
             if (!this.isPlaying) return;
+
+            // If lyrics closed on mobile, stop the loop
+            if (this._isMobile) {
+                const lo = document.getElementById('lyrics-overlay');
+                if (!lo || lo.classList.contains('hidden')) {
+                    this._syncRafId = null;
+                    return;
+                }
+            }
 
             const curTime = (this.activeEngine === 'yt' && YTBridge.player?.getCurrentTime)
                 ? YTBridge.player.getCurrentTime()
@@ -603,6 +652,7 @@ const Player = {
             YTBridge.stop();
         }
         this.activeEngine = 'audio';
+        this.ensureYTBridge(); // Lazy-init YTBridge now in case this play fails and we need fallback
 
         // Save track to local storage recently played
         if (!track.isLocal) {
@@ -646,6 +696,7 @@ const Player = {
     },
 
     playViaYTBridge(track, prevTrackId) {
+        this.ensureYTBridge(); // Make sure YTBridge is initialized before using it
         this.activeEngine = 'yt';
         try {
             this.audio.pause();
@@ -1558,42 +1609,76 @@ const Player = {
     // ============================================
 
     setupMediaSession() {
-        if ('mediaSession' in navigator) {
-            const actionHandlers = [
-                ['play', () => this.togglePlay()],
-                ['pause', () => this.togglePlay()],
-                ['previoustrack', () => this.previous()],
-                ['nexttrack', () => this.next()],
-                ['seekto', (details) => {
-                    if (details.seekTime !== undefined) {
-                        if (this.activeEngine === 'yt') {
-                            YTBridge.seekTo(details.seekTime);
-                        } else {
-                            this.seekToSeconds(details.seekTime);
-                        }
-                        this.updatePositionState();
-                    }
-                }],
-                ['seekbackward', null], // Explicitly null out seek backward so OS prioritizes Previous Track button
-                ['seekforward', null],  // Explicitly null out seek forward so OS prioritizes Next Track button
-                ['stop', () => {
-                    if (this.activeEngine === 'yt') {
-                        YTBridge.pause();
-                    } else {
-                        this.audio.pause();
-                    }
-                    this.onPlayState(false);
-                }]
-            ];
+        if (!('mediaSession' in navigator)) return;
 
-            for (const [action, handler] of actionHandlers) {
-                try {
-                    navigator.mediaSession.setActionHandler(action, handler);
-                } catch (e) {
-                    console.debug(`MediaSession action "${action}" not supported:`, e);
+        // IMPORTANT: Use DIRECT play/pause calls, not togglePlay().
+        // The OS sends 'play' when it wants playback to start and 'pause' when it wants it to stop.
+        // Using togglePlay() can invert the state if the OS and our state get out of sync.
+        try {
+            navigator.mediaSession.setActionHandler('play', () => {
+                if (this.activeEngine === 'yt') {
+                    YTBridge.resume();
+                    this.isPlaying = true;
+                    this.onPlayState(true);
+                } else {
+                    this.audio.play().catch(() => {});
                 }
-            }
-        }
+            });
+        } catch (e) { console.debug('MediaSession play not supported:', e); }
+
+        try {
+            navigator.mediaSession.setActionHandler('pause', () => {
+                if (this.activeEngine === 'yt') {
+                    YTBridge.pause();
+                    this.isPlaying = false;
+                    this.onPlayState(false);
+                } else {
+                    this.audio.pause();
+                }
+            });
+        } catch (e) { console.debug('MediaSession pause not supported:', e); }
+
+        // Previous and Next track — these show the |<< and >>| buttons on lock screen
+        try {
+            navigator.mediaSession.setActionHandler('previoustrack', () => {
+                this.previous();
+            });
+        } catch (e) { console.debug('MediaSession previoustrack not supported:', e); }
+
+        try {
+            navigator.mediaSession.setActionHandler('nexttrack', () => {
+                this.next();
+            });
+        } catch (e) { console.debug('MediaSession nexttrack not supported:', e); }
+
+        // Seek-to for lock screen scrubber/progress bar
+        try {
+            navigator.mediaSession.setActionHandler('seekto', (details) => {
+                if (details.seekTime !== undefined) {
+                    if (this.activeEngine === 'yt') {
+                        YTBridge.seekTo(details.seekTime);
+                    } else {
+                        this.seekToSeconds(details.seekTime);
+                    }
+                    this.updatePositionState();
+                }
+            });
+        } catch (e) { console.debug('MediaSession seekto not supported:', e); }
+
+        // IMPORTANT: Do NOT register 'seekbackward' or 'seekforward' handlers at all.
+        // When these are not registered, iOS/Android shows Previous/Next track buttons instead.
+        // Setting them to null still counts as "registered" on some browsers.
+
+        try {
+            navigator.mediaSession.setActionHandler('stop', () => {
+                if (this.activeEngine === 'yt') {
+                    YTBridge.pause();
+                } else {
+                    this.audio.pause();
+                }
+                this.onPlayState(false);
+            });
+        } catch (e) { console.debug('MediaSession stop not supported:', e); }
     },
 
     updateMediaSession(track) {

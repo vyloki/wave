@@ -3,7 +3,7 @@
   "short_name": "Wave",
   "description": "Your personal music streaming experience worldwide.",
   "start_url": "/",
-  "display": "standalone",
+  "display": "minimal-ui",
   "background_color": "#faf7f2",
   "theme_color": "#f5f0e8",
   "orientation": "portrait-primary",

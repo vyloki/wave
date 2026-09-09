@@ -3,7 +3,7 @@
  * Caches static UI assets for instant app loading and offline capability.
  */
 
-const CACHE_NAME = 'wave-v7';
+const CACHE_NAME = 'wave-v8';
 const STATIC_ASSETS = [
     '/',
     '/static/manifest.json',

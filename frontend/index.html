@@ -26,9 +26,9 @@
     <link rel="icon" type="image/png" href="/static/icons/icon-192.png">
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/static/css/index.css?v=4.0">
-    <link rel="stylesheet" href="/static/css/player.css?v=4.0">
-    <link rel="stylesheet" href="/static/css/animations.css?v=4.0">
+    <link rel="stylesheet" href="/static/css/index.css?v=5.0">
+    <link rel="stylesheet" href="/static/css/player.css?v=5.0">
+    <link rel="stylesheet" href="/static/css/animations.css?v=5.0">
 </head>
 <body>
     <!-- ============================== -->
@@ -915,14 +915,14 @@
     <canvas id="visualizer-canvas" class="visualizer-canvas"></canvas>
 
     <!-- Scripts -->
-    <script src="/static/js/app.js?v=5.0"></script>
-    <script src="/static/js/auth.js?v=5.0"></script>
-    <script src="/static/js/player.js?v=5.0"></script>
-    <script src="/static/js/library.js?v=5.0"></script>
-    <script src="/static/js/extract.js?v=5.0"></script>
-    <script src="/static/js/lyrics.js?v=5.0"></script>
-    <script src="/static/js/local_import.js?v=5.0"></script>
-    <script src="/static/js/visualizer.js?v=5.0"></script>
+    <script src="/static/js/app.js?v=6.0"></script>
+    <script src="/static/js/auth.js?v=6.0"></script>
+    <script src="/static/js/player.js?v=6.0"></script>
+    <script src="/static/js/library.js?v=6.0"></script>
+    <script src="/static/js/extract.js?v=6.0"></script>
+    <script src="/static/js/lyrics.js?v=6.0"></script>
+    <script src="/static/js/local_import.js?v=6.0"></script>
+    <script src="/static/js/visualizer.js?v=6.0"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -930,7 +930,7 @@
 
             // Register Service Worker for PWA
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/static/sw.js?v=6.0').catch((err) => {
+                navigator.serviceWorker.register('/static/sw.js?v=7.0').catch((err) => {
                     console.debug('ServiceWorker registration skipped:', err);
                 });
             }
